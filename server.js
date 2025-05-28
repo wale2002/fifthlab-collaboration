@@ -1,9 +1,7 @@
 const mongoose = require("mongoose");
 const dotenv = require("dotenv");
 const http = require("http");
-
-dotenv.config({ path: ".env" });
-
+dotenv.config();
 const app = require("./app");
 
 // Connect to MongoDB database
@@ -25,6 +23,6 @@ const server = http.createServer(app);
 
 // Listen on the PORT defined by environment or fallback to 3000
 const PORT = process.env.PORT || 3000;
-server.listen(PORT, "0.0.0.0", () => {
+server.listen(PORT, () => {
   console.log(`🚀 Server running on port ${PORT}...`);
 });
