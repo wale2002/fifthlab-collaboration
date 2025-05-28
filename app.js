@@ -8,7 +8,6 @@ const userRoutes = require("./routes/userRoutes");
 const messageRoutes = require("./routes/messageRoutes");
 const AppError = require("./utils/appError");
 const globalErrorHandler = require("./controllers/errorController");
-const viewRoutes = require("./routes/viewRoutes");
 
 const app = express();
 
