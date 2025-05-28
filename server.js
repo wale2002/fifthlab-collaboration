@@ -1,10 +1,10 @@
 const mongoose = require("mongoose");
 const dotenv = require("dotenv");
+const http = require("http");
+
 dotenv.config({ path: ".env" });
 
 const app = require("./app");
-
-// Create HTTP server and bind Socket.IO
 
 // Connect to MongoDB database
 const DB = process.env.DATABASE.replace(
@@ -20,8 +20,11 @@ mongoose
     process.exit(1);
   });
 
+// Create HTTP server with the Express app
+const server = http.createServer(app);
+
 // Listen on the PORT defined by environment or fallback to 3000
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
+server.listen(PORT, "0.0.0.0", () => {
   console.log(`🚀 Server running on port ${PORT}...`);
 });
