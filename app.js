@@ -44,4 +44,6 @@ app.all("*", (req, res, next) => {
 
 app.use(globalErrorHandler);
 
+app.listen();
+
 module.exports = app;

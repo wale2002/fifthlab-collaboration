@@ -1,7 +1,7 @@
 const mongoose = require("mongoose");
 const dotenv = require("dotenv");
 
-dotenv.config({ path: "./env" });
+dotenv.config({ path: ".env" });
 
 // Validate JWT_SECRET
 if (!process.env.JWT_SECRET) {
@@ -63,6 +63,6 @@ const DB = process.env.DATABASE.replace(
 mongoose.connect(DB).then(() => console.log("✅ DB connection successful"));
 
 const port = process.env.PORT || 3000;
-server.listen(port, () => {
+app.listen(port, () => {
   console.log(`🚀 Server running on port ${port}...`);
 });
