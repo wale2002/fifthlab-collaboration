@@ -7,8 +7,7 @@ const cors = require("cors");
 const userRoutes = require("./routes/userRoutes");
 const messageRoutes = require("./routes/messageRoutes");
 const AppError = require("./utils/appError");
-const globalErrorHandler = require("./controllers/errorController");
-
+const globalErrorHandler = require("./controllers/errorControllers");
 const app = express();
 
 app.use(
@@ -18,10 +17,6 @@ app.use(
   })
 );
 
-app.set("view engine", "pug");
-app.set("views", path.join(__dirname, "views"));
-
-app.use(express.static(path.join(__dirname, "public")));
 app.use(helmet());
 app.use(express.urlencoded({ extended: true }));
 app.use(express.json());
@@ -31,19 +26,14 @@ if (process.env.NODE_ENV === "development") {
   app.use(morgan("dev"));
 }
 
-app.get("/favicon.ico", (req, res) => res.status(204).end());
-
 // Route handlers
 app.use("/api/v1/users", userRoutes);
 app.use("/api/v1/messages", messageRoutes);
 
+app.use(globalErrorHandler);
 // Handle unknown routes
 app.all("*", (req, res, next) => {
   next(new AppError(`Can't find ${req.originalUrl} on this server!, 404`));
 });
-
-app.use(globalErrorHandler);
-
-app.listen();
 
 module.exports = app;
