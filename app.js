@@ -31,6 +31,9 @@ if (process.env.NODE_ENV === "development") {
 }
 
 // Route handlers
+app.get("/", (req, res) => {
+  res.send("Hello World!");
+});
 app.use("/api/v1/users", userRoutes);
 app.use("/api/v1/messages", messageRoutes);
 
