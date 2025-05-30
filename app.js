@@ -14,10 +14,21 @@ const AppError = require("./utils/appError");
 const globalErrorHandler = require("./controllers/errorControllers");
 const app = express();
 
+const allowedOrigins = [
+  process.env.FRONTEND_URL || "https://fifthlab-collaboration.onrender.com",
+  "http://localhost:3000", // your dev frontend
+  "http://localhost:5173", // external dev's frontend (e.g. Vite server)
+];
+
 app.use(
   cors({
-    origin:
-      process.env.FRONTEND_URL || "https://fifthlab-collaboration.onrender.com",
+    origin: function (origin, callback) {
+      // Allow requests with no origin (like mobile apps or server-to-server)
+      if (!origin || allowedOrigins.includes(origin)) {
+        return callback(null, true);
+      }
+      callback(new AppError("CORS policy: This origin is not allowed", 403));
+    },
     credentials: true,
   })
 );
