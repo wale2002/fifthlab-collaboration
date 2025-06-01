@@ -36,6 +36,7 @@ exports.getUser = catchAsync(async (req, res, next) => {
 });
 
 exports.updateMe = catchAsync(async (req, res, next) => {
+  // Prevent password updates
   if (req.body.password || req.body.passwordConfirm) {
     return next(
       new AppError(
@@ -45,11 +46,31 @@ exports.updateMe = catchAsync(async (req, res, next) => {
     );
   }
 
-  const filteredBody = filterObj(req.body, "name", "email");
+  // Log request for debugging
+  console.log("req.body:", req.body);
+  console.log("req.user:", req.user);
+
+  // Filter allowed fields based on schema
+  const filteredBody = filterObj(req.body, "firstName", "lastName", "email");
+  console.log("filteredBody:", filteredBody);
+
+  // Check if filteredBody is empty
+  if (Object.keys(filteredBody).length === 0) {
+    return next(new AppError("No valid fields provided for update", 400));
+  }
+
+  // Update user
   const updatedUser = await User.findByIdAndUpdate(req.user.id, filteredBody, {
     new: true,
     runValidators: true,
   }).select("-password");
+
+  // Check if user was found and updated
+  if (!updatedUser) {
+    return next(new AppError("User not found", 404));
+  }
+
+  console.log("updatedUser:", updatedUser);
 
   res.status(200).json({
     status: "success",

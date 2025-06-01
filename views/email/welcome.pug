@@ -1,0 +1,11 @@
+
+extends baseEmail
+
+block content
+  h1 Welcome, #{firstName}!
+  p Thank you for joining Fifthlab. We're excited to have you on board!
+  p You can now log in to your account and start exploring our platform.
+  p
+    a.btn(href= url) Log In Now
+  p If the button doesn't work, copy and paste this link:
+  a(href= url)= url

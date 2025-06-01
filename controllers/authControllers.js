@@ -3,6 +3,7 @@ const { promisify } = require("util");
 const User = require("../models/userModel");
 const Email = require("../utils/email");
 const crypto = require("crypto");
+const rateLimit = require("express-rate-limit");
 const validator = require("validator");
 
 const signToken = (id) => {
@@ -33,6 +34,171 @@ const createSendToken = (user, statusCode, req, res) => {
   });
 };
 
+// exports.signup = async (req, res) => {
+//   try {
+//     const {
+//       firstName,
+//       lastName,
+//       email,
+//       accountName,
+//       password,
+//       teamMemberEmail,
+//       teamMemberRole,
+//     } = req.body;
+
+//     // 1. Validate required fields for main user
+//     if (!firstName || !lastName || !email || !password) {
+//       return res.status(400).json({
+//         status: "fail",
+//         message: "Missing required fields",
+//       });
+//     }
+
+//     // 2. Validate emails
+//     if (!validator.isEmail(email)) {
+//       return res.status(400).json({ status: "fail", message: "Invalid email" });
+//     }
+//     if (teamMemberEmail && !validator.isEmail(teamMemberEmail)) {
+//       return res
+//         .status(400)
+//         .json({ status: "fail", message: "Invalid team member email" });
+//     }
+
+//     // 3. Check if accountName already exists (active users only)
+
+//     // 4. Create the main user
+//     const newUser = await User.create({
+//       firstName,
+//       lastName,
+//       email,
+//       password,
+//       role: "Viewer",
+//       isInvited: false,
+//     });
+
+//     // 5. Create the team member if provided
+//     if (teamMemberEmail) {
+//       const tempPassword = crypto.randomBytes(8).toString("hex");
+
+//       const teamMember = await User.create({
+//         firstName: "Team",
+//         lastName: "Member",
+//         email: teamMemberEmail,
+//         accountName: accountName, // same accountName as main user
+//         password: tempPassword,
+//         role: teamMemberRole || "Viewer",
+//         isInvited: true,
+//       });
+
+//       try {
+//         await new Email(teamMember, tempPassword).sendTemporaryPassword();
+//       } catch (emailErr) {
+//         console.error("Email failed to send to team member:", emailErr);
+//       }
+//     }
+
+//     // 6. Send success response
+//     res.status(201).json({
+//       status: "success",
+//       data: { user: newUser },
+//     });
+//   } catch (err) {
+//     res.status(500).json({
+//       status: "error",
+//       message: err.message,
+//     });
+//   }
+// };
+// controllers/authController.js (only showing the signup function for brevity)
+// exports.signup = async (req, res) => {
+//   try {
+//     const {
+//       firstName,
+//       lastName,
+//       email,
+//       accountName,
+//       password,
+//       teamMemberEmail,
+//       teamMemberRole,
+//     } = req.body;
+
+//     // 1. Validate required fields for main user
+//     if (!firstName || !lastName || !email || !password) {
+//       return res.status(400).json({
+//         status: "fail",
+//         message: "Missing required fields",
+//       });
+//     }
+
+//     // 2. Validate emails
+//     if (!validator.isEmail(email)) {
+//       return res.status(400).json({ status: "fail", message: "Invalid email" });
+//     }
+//     if (teamMemberEmail && !validator.isEmail(teamMemberEmail)) {
+//       return res
+//         .status(400)
+//         .json({ status: "fail", message: "Invalid team member email" });
+//     }
+
+//     // 3. Create the main user
+//     const newUser = await User.create({
+//       firstName,
+//       lastName,
+//       email,
+//       accountName,
+//       password,
+//       role: "Viewer",
+//       isInvited: false,
+//     });
+
+//     // 4. Send welcome email to main user
+//     const loginUrl = `${req.protocol}://${req.get("host")}/login`;
+//     try {
+//       await new Email(newUser, loginUrl).sendWelcome();
+//     } catch (emailErr) {
+//       console.error("Failed to send welcome email:", emailErr);
+//       // Continue to allow signup to complete
+//     }
+
+//     // 5. Create the team member if provided
+//     if (teamMemberEmail) {
+//       const tempPassword = crypto.randomBytes(8).toString("hex");
+
+//       const teamMember = await User.create({
+//         firstName: "Team",
+//         lastName: "Member",
+//         email: teamMemberEmail,
+//         accountName,
+//         password: tempPassword,
+//         role: teamMemberRole || "Viewer",
+//         isInvited: true,
+//       });
+
+//       try {
+//         await new Email(
+//           teamMember,
+//           loginUrl,
+//           tempPassword
+//         ).sendTemporaryPassword();
+//       } catch (emailErr) {
+//         console.error("Failed to send team member email:", emailErr);
+//         // Continue to allow signup to complete
+//       }
+//     }
+
+//     // 6. Send success response
+//     res.status(201).json({
+//       status: "success",
+//       data: { user: newUser },
+//     });
+//   } catch (err) {
+//     console.error("Signup error:", err);
+//     res.status(500).json({
+//       status: "error",
+//       message: err.message,
+//     });
+//   }
+// };
 exports.signup = async (req, res) => {
   try {
     const {
@@ -63,19 +229,47 @@ exports.signup = async (req, res) => {
         .json({ status: "fail", message: "Invalid team member email" });
     }
 
-    // 3. Check if accountName already exists (active users only)
+    // 3. Check for existing main user email (optional, to avoid hitting unique index)
+    const existingUser = await User.findOne({ email });
+    if (existingUser) {
+      return res.status(400).json({
+        status: "fail",
+        message: "Email already in use",
+      });
+    }
 
-    // 4. Create the main user
+    // 4. Check for existing team member email (if provided)
+    if (teamMemberEmail) {
+      const existingTeamMember = await User.findOne({ email: teamMemberEmail });
+      if (existingTeamMember) {
+        return res.status(400).json({
+          status: "fail",
+          message: "Team member email already in use",
+        });
+      }
+    }
+
+    // 5. Create the main user
     const newUser = await User.create({
       firstName,
       lastName,
       email,
+      accountName,
       password,
       role: "Viewer",
       isInvited: false,
     });
 
-    // 5. Create the team member if provided
+    // 6. Send welcome email to main user
+    const loginUrl = `${req.protocol}://${req.get("host")}/login`;
+    try {
+      await new Email(newUser, loginUrl).sendWelcome();
+    } catch (emailErr) {
+      console.error("Failed to send welcome email:", emailErr);
+      // Continue to allow signup to complete
+    }
+
+    // 7. Create the team member if provided
     if (teamMemberEmail) {
       const tempPassword = crypto.randomBytes(8).toString("hex");
 
@@ -83,32 +277,44 @@ exports.signup = async (req, res) => {
         firstName: "Team",
         lastName: "Member",
         email: teamMemberEmail,
-        accountName: accountName, // same accountName as main user
+        accountName,
         password: tempPassword,
         role: teamMemberRole || "Viewer",
         isInvited: true,
       });
 
       try {
-        await new Email(teamMember, tempPassword).sendTemporaryPassword();
+        await new Email(
+          teamMember,
+          loginUrl,
+          tempPassword
+        ).sendTemporaryPassword();
       } catch (emailErr) {
-        console.error("Email failed to send to team member:", emailErr);
+        console.error("Failed to send team member email:", emailErr);
+        // Continue to allow signup to complete
       }
     }
 
-    // 6. Send success response
+    // 8. Send success response
     res.status(201).json({
       status: "success",
       data: { user: newUser },
     });
   } catch (err) {
+    if (err.code === 11000) {
+      // Handle duplicate key error for email
+      return res.status(400).json({
+        status: "fail",
+        message: "Email already in use",
+      });
+    }
+    console.error("Signup error:", err);
     res.status(500).json({
       status: "error",
-      message: err.message,
+      message: "Internal server error",
     });
   }
 };
-
 exports.login = async (req, res) => {
   try {
     const { email, password } = req.body;
@@ -132,11 +338,16 @@ exports.login = async (req, res) => {
 };
 
 exports.logout = (req, res) => {
+  const username = req.user?.firstName || req.user?.email || "User";
   res.cookie("jwt", "loggedout", {
     expires: new Date(Date.now() + 10 * 1000),
     httpOnly: true,
   });
-  res.status(200).json({ status: "success" });
+  res.status(200).json({
+    status: "success",
+    message: `${username} logged out successfully`,
+    timestamp: new Date().toISOString(),
+  });
 };
 
 exports.protect = async (req, res, next) => {
@@ -172,9 +383,11 @@ exports.protect = async (req, res, next) => {
     res.locals.user = currentUser;
     next();
   } catch (err) {
-    return res
-      .status(401)
-      .json({ status: "fail", message: "Invalid or expired token" });
+    return res.status(401).json({
+      status: "fail",
+      message: "Invalid or expired token",
+      error: err.message,
+    });
   }
 };
 
@@ -200,65 +413,89 @@ exports.isLoggedIn = async (req, res, next) => {
   next();
 };
 
-exports.restrictTo = (...roles) => {
-  return (req, res, next) => {
-    if (!roles.includes(req.user.role)) {
-      return res
-        .status(403)
-        .json({ status: "fail", message: "Permission denied" });
-    }
-    next();
-  };
-};
+// Rate limiter middleware
 
-exports.forgotPassword = async (req, res) => {
+exports.forgotPassword = async (req, res, next) => {
   try {
-    const { email } = req.body;
-    if (!email) {
-      return res
-        .status(400)
-        .json({ status: "fail", message: "Provide an email" });
-    }
-
-    const user = await User.findOne({ email });
+    // 1. Find user by email
+    const user = await User.findOne({ email: req.body.email });
     if (!user) {
-      return res
-        .status(404)
-        .json({ status: "fail", message: "No user with that email" });
+      return res.status(404).json({ message: "No user found with that email" });
     }
 
+    // 2. Generate reset token
     const resetToken = user.createPasswordResetToken();
     await user.save({ validateBeforeSave: false });
 
+    // 3. Create reset URL
     const resetURL = `${req.protocol}://${req.get(
       "host"
-    )}/api/v1/users/resetPassword/${resetToken}`;
+    )}/api/resetPassword/${resetToken}`;
 
+    // 4. Send password reset email using Email class
     await new Email(user, resetURL).sendPasswordReset();
+
+    // 5. Send response
     res.status(200).json({
       status: "success",
-      message: "Token sent to email",
+      message: "Token sent to email!",
+      resetToken,
     });
-  } catch (err) {
-    console.error("Email sending error:", err);
-    res.status(500).json({
-      status: "error",
-      message: "Email could not be sent",
-    });
+  } catch (error) {
+    console.error("Error in forgotPassword:", error);
+    // Clear reset token if email fails
+    if (user) {
+      user.passwordResetToken = undefined;
+      user.passwordResetExpires = undefined;
+      await user.save({ validateBeforeSave: false });
+    }
+    res
+      .status(500)
+      .json({ message: "Failed to send email", error: error.message });
   }
 };
 
 exports.resetPassword = async (req, res) => {
   try {
+    // Log incoming request details for debugging
+    console.log("Reset Password Request:", {
+      token: req.params.token,
+      body: req.body,
+      method: req.method,
+    });
+
+    // Restrict to PATCH requests
+    if (req.method !== "PATCH") {
+      return res
+        .status(405)
+        .json({ status: "error", message: "Method not allowed. Use PATCH." });
+    }
+
+    // Validate password
+    const { password } = req.body;
+    if (!password) {
+      return res
+        .status(400)
+        .json({ status: "fail", message: "Password is required" });
+    }
+    if (password.length < 8) {
+      return res.status(400).json({
+        status: "fail",
+        message: "Password must be at least 8 characters",
+      });
+    }
+
+    // Hash the token from params
     const hashedToken = crypto
       .createHash("sha256")
       .update(req.params.token)
       .digest("hex");
 
+    // Find user with valid token
     const user = await User.findOne({
       passwordResetToken: hashedToken,
       passwordResetExpires: { $gt: Date.now() },
-    });
+    }).select("+password"); // Include password field if needed for validation
 
     if (!user) {
       return res
@@ -266,14 +503,25 @@ exports.resetPassword = async (req, res) => {
         .json({ status: "fail", message: "Token is invalid or expired" });
     }
 
-    user.password = req.body.password;
+    // Update password and clear reset fields
+    user.password = password;
     user.passwordResetToken = undefined;
     user.passwordResetExpires = undefined;
-    await user.save();
 
+    // Save user, catch validation or save errors
+    await user.save({ validateBeforeSave: true }).catch((err) => {
+      console.error("User save error:", err);
+      throw new Error(`User save failed: ${err.message}`);
+    });
+
+    // Call createSendToken
     createSendToken(user, 200, req, res);
   } catch (err) {
-    res.status(500).json({ status: "error", message: "Password reset failed" });
+    console.error("Reset password error:", err);
+    res.status(500).json({
+      status: "error",
+      message: `Password reset failed: ${err.message} `,
+    });
   }
 };
 

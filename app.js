@@ -16,7 +16,7 @@ const app = express();
 
 const allowedOrigins = [
   process.env.FRONTEND_URL || "https://fifthlab-collaboration.onrender.com",
-  "http://localhost:3000", // your dev frontend
+  "http://localhost:4000", // your dev frontend
   "http://localhost:5173", // external dev's frontend (e.g. Vite server)
 ];
 
@@ -46,6 +46,8 @@ if (process.env.NODE_ENV === "development") {
 app.get("/", (req, res) => {
   res.send("Hello World!");
 });
+app.get("/favicon.ico", (req, res) => res.status(204).end());
+
 app.use("/api/v1/users", userRoutes);
 app.use("/api/v1/messages", messageRoutes);
 
@@ -53,6 +55,12 @@ app.use(globalErrorHandler);
 // Handle unknown routes
 app.all("*", (req, res, next) => {
   next(new AppError(`Can't find ${req.originalUrl} on this server!, 404`));
+});
+app.use((err, req, res, next) => {
+  res.status(err.statusCode || 500).json({
+    status: err.status || "error",
+    message: err.message,
+  });
 });
 
 module.exports = app;

@@ -1,6 +1,7 @@
 const mongoose = require("mongoose");
 const validator = require("validator");
 const bcrypt = require("bcryptjs");
+const crypto = require("crypto");
 
 const userSchema = new mongoose.Schema({
   firstName: {
@@ -40,7 +41,7 @@ const userSchema = new mongoose.Schema({
       values: ["Admin", "Viewer", "Editor"],
       message: "Role must be an Admin , Viewer, Editor",
     },
-    default: "user",
+    default: "Viewer",
   },
   isInvited: {
     type: Boolean,
@@ -96,5 +97,16 @@ userSchema.methods.changedPasswordAfter = function (jwtTimestamp) {
   return false;
 };
 
+userSchema.methods.createPasswordResetToken = function () {
+  console.log("Creating reset token...");
+  const resetToken = crypto.randomBytes(32).toString("hex");
+  this.passwordResetToken = crypto
+    .createHash("sha256")
+    .update(resetToken)
+    .digest("hex");
+  this.passwordResetExpires = Date.now() + 10 * 60 * 1000;
+  console.log("Token generated:", resetToken);
+  return resetToken;
+};
 const User = mongoose.model("User", userSchema);
 module.exports = User;

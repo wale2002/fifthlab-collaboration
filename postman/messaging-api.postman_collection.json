@@ -1,25 +1,49 @@
 {
   "info": {
-    "_postman_id": "7df746b8-488b-446e-92cf-54bc3bdef3d6",
     "name": "Messaging API",
+    "_postman_id": "messaging-api-123",
+    "description": "API endpoints for messaging system",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "item": [
     {
-      "name": "Login (Get Token)",
+      "name": "Get Messages",
       "request": {
-        "method": "POST",
-        "header": [{ "key": "Content-Type", "value": "application/json" }],
-        "body": {
-          "mode": "raw",
-          "raw": "{\n  \"email\": \"user@example.com\",\n  \"password\": \"yourPassword\"\n}"
-        },
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token}}"
+          }
+        ],
         "url": {
-          "raw": "http://localhost:3000/api/v1/users/login",
-          "protocol": "http",
-          "host": ["localhost"],
-          "port": "3000",
-          "path": ["api", "v1", "users", "login"]
+          "raw": "{{baseUrl}}/messages?filter={{filter}}",
+          "host": ["{{baseUrl}}"],
+          "path": ["messages"],
+          "query": [
+            {
+              "key": "filter",
+              "value": "{{filter}}",
+              "description": "all|unread|archived"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "Get Message Details",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token}}"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/messages/:id",
+          "host": ["{{baseUrl}}"],
+          "path": ["messages", ":id"]
         }
       }
     },
@@ -28,55 +52,73 @@
       "request": {
         "method": "POST",
         "header": [
-          { "key": "Content-Type", "value": "application/json" },
-          { "key": "Authorization", "value": "Bearer {{jwt}}" }
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
         ],
         "body": {
           "mode": "raw",
-          "raw": "{\n  \"receiverEmail\": \"receiver@example.com\",\n  \"content\": \"Hey there!\" \n}"
+          "raw": "{\n  \"recipient\": \"user_789\",\n  \"content\": \"Can we reschedule?\"\n}"
         },
         "url": {
-          "raw": "http://localhost:3000/api/v1/messages",
-          "protocol": "http",
-          "host": ["localhost"],
-          "port": "3000",
-          "path": ["api", "v1", "messages"]
+          "raw": "{{baseUrl}}/messages",
+          "host": ["{{baseUrl}}"],
+          "path": ["messages"]
         }
       }
     },
     {
-      "name": "Get Inbox",
+      "name": "Mark as Read",
       "request": {
-        "method": "GET",
-        "header": [{ "key": "Authorization", "value": "Bearer {{jwt}}" }],
+        "method": "PATCH",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token}}"
+          }
+        ],
         "url": {
-          "raw": "http://localhost:3000/api/v1/messages",
-          "protocol": "http",
-          "host": ["localhost"],
-          "port": "3000",
-          "path": ["api", "v1", "messages"]
+          "raw": "{{baseUrl}}/messages/:id/read",
+          "host": ["{{baseUrl}}"],
+          "path": ["messages", ":id", "read"]
         }
       }
     },
     {
-      "name": "Get Chat with Specific User",
+      "name": "Toggle Archive",
       "request": {
-        "method": "GET",
-        "header": [{ "key": "Authorization", "value": "Bearer {{jwt}}" }],
+        "method": "PATCH",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token}}"
+          }
+        ],
         "url": {
-          "raw": "http://localhost:3000/api/v1/messages/chat?receiverEmail=receiver@example.com",
-          "protocol": "http",
-          "host": ["localhost"],
-          "port": "3000",
-          "path": ["api", "v1", "messages", "chat"],
-          "query": [
-            {
-              "key": "receiverEmail",
-              "value": "receiver@example.com"
-            }
-          ]
+          "raw": "{{baseUrl}}/messages/:id/archive",
+          "host": ["{{baseUrl}}"],
+          "path": ["messages", ":id", "archive"]
         }
       }
+    }
+  ],
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:3000/api/v1"
+    },
+    {
+      "key": "token",
+      "value": "your_jwt_token_here"
+    },
+    {
+      "key": "filter",
+      "value": "all"
     }
   ]
 }

@@ -1,0 +1,18 @@
+
+extends baseEmail
+
+block content
+  h1 Welcome to the Fifthlab Team!
+  p Hi,
+  p You've been invited to join a Fifthlab account as a team member.
+  p Your temporary login details are:
+  p
+    strong Email: #{to}
+  p
+    strong Temporary Password: #{tempPassword}
+  p Please log in and change your password as soon as possible:
+  p
+    a.btn(href= url) Log In Now
+  p If the button doesn't work, copy and paste this link:
+  a(href= url)= url
+  p If you didn't expect this invitation, please contact the account owner.

@@ -4,16 +4,13 @@ const authController = require("../controllers/authControllers");
 
 const router = express.Router();
 
-// router.use(authController.protect);
+// Protect all routes
+router.use(authController.protect);
 
+router.get("/", messageController.getMessages);
+router.get("/:id", messageController.getMessageDetails);
 router.post("/", messageController.sendMessage);
-router.get(
-  "/all",
-  authController.restrictTo("admin"),
-  messageController.getAllMessages
-);
-router.get("/", messageController.getInbox);
-router.get("/chat", messageController.getChatWithUser);
-router.get("/:userId", messageController.getMessagesBetweenUsers);
+router.patch("/:id/read", messageController.markAsRead);
+router.patch("/:id/archive", messageController.toggleArchive);
 
 module.exports = router;
