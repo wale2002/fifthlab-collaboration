@@ -20,6 +20,7 @@ const allowedOrigins = [
   "http://localhost:5173", // external dev's frontend (e.g. Vite server)
   "https://fifths.netlify.app", // add your Netlify frontend
   "https://fise.netlify.app",
+  "https://fiftth.netlify.app",
 ];
 
 app.use(

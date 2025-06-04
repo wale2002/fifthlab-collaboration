@@ -29,7 +29,7 @@
     "init": "^0.1.2",
     "jsonwebtoken": "^9.0.2",
     "mongodb": "^6.16.0",
-    "mongoose": "^8.15.0",
+    "mongoose": "^8.15.1",
     "morgan": "^1.10.0",
     "multer": "^2.0.0",
     "newman": "^6.2.1",
