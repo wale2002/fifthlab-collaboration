@@ -1,124 +1,309 @@
 {
   "info": {
-    "name": "Messaging API",
-    "_postman_id": "messaging-api-123",
-    "description": "API endpoints for messaging system",
+    "name": "Chat System API",
+    "_postman_id": "unique-postman-id",
+    "description": "API collection for the chat system, including chat creation, message handling, and user management.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "item": [
     {
-      "name": "Get Messages",
-      "request": {
-        "method": "GET",
-        "header": [
-          {
-            "key": "Authorization",
-            "value": "Bearer {{token}}"
-          }
-        ],
-        "url": {
-          "raw": "{{baseUrl}}/messages?filter={{filter}}",
-          "host": ["{{baseUrl}}"],
-          "path": ["messages"],
-          "query": [
-            {
-              "key": "filter",
-              "value": "{{filter}}",
-              "description": "all|unread|archived"
-            }
-          ]
-        }
-      }
-    },
-    {
-      "name": "Get Message Details",
-      "request": {
-        "method": "GET",
-        "header": [
-          {
-            "key": "Authorization",
-            "value": "Bearer {{token}}"
-          }
-        ],
-        "url": {
-          "raw": "{{baseUrl}}/messages/:id",
-          "host": ["{{baseUrl}}"],
-          "path": ["messages", ":id"]
-        }
-      }
-    },
-    {
-      "name": "Send Message",
-      "request": {
-        "method": "POST",
-        "header": [
-          {
-            "key": "Authorization",
-            "value": "Bearer {{token}}"
+      "name": "Chat Routes",
+      "item": [
+        {
+          "name": "Create Chat",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"recipient\": \"{{recipientId}}\",\n  \"isGroupChat\": false\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/chats",
+              "host": ["{{baseUrl}}"],
+              "path": ["chats"]
+            },
+            "description": "Create a one-on-one or group chat. For one-on-one, provide recipient. For group chat, set isGroupChat to true and provide groupName and members."
           },
-          {
-            "key": "Content-Type",
-            "value": "application/json"
-          }
-        ],
-        "body": {
-          "mode": "raw",
-          "raw": "{\n  \"recipient\": \"user_789\",\n  \"content\": \"Can we reschedule?\"\n}"
+          "response": []
         },
-        "url": {
-          "raw": "{{baseUrl}}/messages",
-          "host": ["{{baseUrl}}"],
-          "path": ["messages"]
+        {
+          "name": "Create Group Chat",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"isGroupChat\": true,\n  \"groupName\": \"Team Chat\",\n  \"members\": [\"{{userId1}}\", \"{{userId2}}\"]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/chats",
+              "host": ["{{baseUrl}}"],
+              "path": ["chats"]
+            },
+            "description": "Create a group chat with specified members and group name."
+          },
+          "response": []
+        },
+        {
+          "name": "Get All Chats",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/chats?page=1&limit=10&sortBy=updatedAt&sortOrder=desc",
+              "host": ["{{baseUrl}}"],
+              "path": ["chats"],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "limit",
+                  "value": "10"
+                },
+                {
+                  "key": "sortBy",
+                  "value": "updatedAt"
+                },
+                {
+                  "key": "sortOrder",
+                  "value": "desc"
+                }
+              ]
+            },
+            "description": "Retrieve all chats for the authenticated user with pagination and sorting."
+          },
+          "response": []
         }
-      }
+      ]
     },
     {
-      "name": "Mark as Read",
-      "request": {
-        "method": "PATCH",
-        "header": [
-          {
-            "key": "Authorization",
-            "value": "Bearer {{token}}"
-          }
-        ],
-        "url": {
-          "raw": "{{baseUrl}}/messages/:id/read",
-          "host": ["{{baseUrl}}"],
-          "path": ["messages", ":id", "read"]
+      "name": "Message Routes",
+      "item": [
+        {
+          "name": "Get Messages for Chat",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/messages?chatId={{chatId}}&page=1&limit=20&filter=unread",
+              "host": ["{{baseUrl}}"],
+              "path": ["messages"],
+              "query": [
+                {
+                  "key": "chatId",
+                  "value": "{{chatId}}"
+                },
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "limit",
+                  "value": "20"
+                },
+                {
+                  "key": "filter",
+                  "value": "unread"
+                }
+              ]
+            },
+            "description": "Retrieve messages for a specific chat with pagination and optional unread filter."
+          },
+          "response": []
+        },
+        {
+          "name": "Send Message",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"chatId\": \"{{chatId}}\",\n  \"content\": \"Hello, how are you?\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/messages",
+              "host": ["{{baseUrl}}"],
+              "path": ["messages"]
+            },
+            "description": "Send a message to a specific chat."
+          },
+          "response": []
+        },
+        {
+          "name": "Mark Chat as Read",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/chats/{{chatId}}/read",
+              "host": ["{{baseUrl}}"],
+              "path": ["chats", "{{chatId}}", "read"]
+            },
+            "description": "Mark all messages in a chat as read for the authenticated user."
+          },
+          "response": []
+        },
+        {
+          "name": "Toggle Chat Archive",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/chats/{{chatId}}/archive",
+              "host": ["{{baseUrl}}"],
+              "path": ["chats", "{{chatId}}", "archive"]
+            },
+            "description": "Toggle archive status for a chat."
+          },
+          "response": []
         }
-      }
+      ]
     },
     {
-      "name": "Toggle Archive",
-      "request": {
-        "method": "PATCH",
-        "header": [
-          {
-            "key": "Authorization",
-            "value": "Bearer {{token}}"
-          }
-        ],
-        "url": {
-          "raw": "{{baseUrl}}/messages/:id/archive",
-          "host": ["{{baseUrl}}"],
-          "path": ["messages", ":id", "archive"]
+      "name": "User Routes",
+      "item": [
+        {
+          "name": "Get All Users",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/users?page=1&limit=50&search=John",
+              "host": ["{{baseUrl}}"],
+              "path": ["users"],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "limit",
+                  "value": "50"
+                },
+                {
+                  "key": "search",
+                  "value": "John"
+                }
+              ]
+            },
+            "description": "Retrieve all active users for initiating chats, with optional search."
+          },
+          "response": []
         }
-      }
+      ]
     }
   ],
   "variable": [
     {
       "key": "baseUrl",
-      "value": "http://localhost:3000/api/v1"
+      "value": "http://localhost:3000/api/v1",
+      "description": "Base URL for the API"
     },
     {
       "key": "token",
-      "value": "your_jwt_token_here"
+      "value": "your-jwt-token-here",
+      "description": "JWT token for authentication"
     },
     {
-      "key": "filter",
-      "value": "all"
+      "key": "recipientId",
+      "value": "user-id-here",
+      "description": "ID of the recipient user for one-on-one chat"
+    },
+    {
+      "key": "userId1",
+      "value": "user-id-1-here",
+      "description": "ID of the first user for group chat"
+    },
+    {
+      "key": "userId2",
+      "value": "user-id-2-here",
+      "description": "ID of the second user for group chat"
+    },
+    {
+      "key": "chatId",
+      "value": "chat-id-here",
+      "description": "ID of the chat"
     }
   ]
 }

@@ -6,10 +6,10 @@ const messageSchema = new mongoose.Schema({
     ref: "User",
     required: [true, "A message must have a sender"],
   },
-  recipient: {
+  chat: {
     type: mongoose.Schema.ObjectId,
-    ref: "User",
-    required: [true, "A message must have a recipient"],
+    ref: "Chat",
+    required: [true, "A message must belong to a chat"],
   },
   content: {
     type: String,
@@ -23,10 +23,6 @@ const messageSchema = new mongoose.Schema({
     maxlength: [100, "Preview cannot exceed 100 characters"],
   },
   isRead: {
-    type: Boolean,
-    default: false,
-  },
-  isArchived: {
     type: Boolean,
     default: false,
   },

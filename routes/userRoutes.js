@@ -22,7 +22,7 @@ router.delete("/deleteMe", userController.deleteMe);
 // Admin routes
 // router.use(authController.restrictTo("admin"));
 
-router.get("/", userController.getAllUsers);
+// router.get("/", userController.getAllUsers);
 router.get("/:id", userController.getUser);
 router.patch("/:id", userController.updateUser);
 router.delete("/:id", userController.deleteUser);
