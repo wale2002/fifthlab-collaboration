@@ -16,7 +16,7 @@ const app = express();
 
 const allowedOrigins = [
   process.env.FRONTEND_URL || "https://fifthlab-collaboration.onrender.com",
-  "http://localhost:4000", // your dev frontend
+  "http://localhost:3000", // your dev frontend
   "http://localhost:5173", // external dev's frontend (e.g. Vite server)
   "https://fifths.netlify.app", // add your Netlify frontend
   "https://fise.netlify.app",
