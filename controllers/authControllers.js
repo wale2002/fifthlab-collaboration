@@ -1,10 +1,14 @@
+// controllers/authController.js (full updated code)
 const jwt = require("jsonwebtoken");
 const { promisify } = require("util");
+const bcrypt = require("bcryptjs");
+const { OAuth2Client } = require("google-auth-library");
 const User = require("../models/userModel");
 const Email = require("../utils/email");
 const crypto = require("crypto");
-const rateLimit = require("express-rate-limit");
 const validator = require("validator");
+
+const client = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
 
 const signToken = (id) => {
   return jwt.sign({ id }, process.env.JWT_SECRET, {
@@ -34,171 +38,13 @@ const createSendToken = (user, statusCode, req, res) => {
   });
 };
 
-// exports.signup = async (req, res) => {
-//   try {
-//     const {
-//       firstName,
-//       lastName,
-//       email,
-//       accountName,
-//       password,
-//       teamMemberEmail,
-//       teamMemberRole,
-//     } = req.body;
+// Load allowed email domains from .env
+const ALLOWED_EMAIL_DOMAINS = process.env.ALLOWED_EMAIL_DOMAINS
+  ? process.env.ALLOWED_EMAIL_DOMAINS.split(",").map((domain) =>
+      domain.trim().toLowerCase()
+    )
+  : ["@company.com"];
 
-//     // 1. Validate required fields for main user
-//     if (!firstName || !lastName || !email || !password) {
-//       return res.status(400).json({
-//         status: "fail",
-//         message: "Missing required fields",
-//       });
-//     }
-
-//     // 2. Validate emails
-//     if (!validator.isEmail(email)) {
-//       return res.status(400).json({ status: "fail", message: "Invalid email" });
-//     }
-//     if (teamMemberEmail && !validator.isEmail(teamMemberEmail)) {
-//       return res
-//         .status(400)
-//         .json({ status: "fail", message: "Invalid team member email" });
-//     }
-
-//     // 3. Check if accountName already exists (active users only)
-
-//     // 4. Create the main user
-//     const newUser = await User.create({
-//       firstName,
-//       lastName,
-//       email,
-//       password,
-//       role: "Viewer",
-//       isInvited: false,
-//     });
-
-//     // 5. Create the team member if provided
-//     if (teamMemberEmail) {
-//       const tempPassword = crypto.randomBytes(8).toString("hex");
-
-//       const teamMember = await User.create({
-//         firstName: "Team",
-//         lastName: "Member",
-//         email: teamMemberEmail,
-//         accountName: accountName, // same accountName as main user
-//         password: tempPassword,
-//         role: teamMemberRole || "Viewer",
-//         isInvited: true,
-//       });
-
-//       try {
-//         await new Email(teamMember, tempPassword).sendTemporaryPassword();
-//       } catch (emailErr) {
-//         console.error("Email failed to send to team member:", emailErr);
-//       }
-//     }
-
-//     // 6. Send success response
-//     res.status(201).json({
-//       status: "success",
-//       data: { user: newUser },
-//     });
-//   } catch (err) {
-//     res.status(500).json({
-//       status: "error",
-//       message: err.message,
-//     });
-//   }
-// };
-// controllers/authController.js (only showing the signup function for brevity)
-// exports.signup = async (req, res) => {
-//   try {
-//     const {
-//       firstName,
-//       lastName,
-//       email,
-//       accountName,
-//       password,
-//       teamMemberEmail,
-//       teamMemberRole,
-//     } = req.body;
-
-//     // 1. Validate required fields for main user
-//     if (!firstName || !lastName || !email || !password) {
-//       return res.status(400).json({
-//         status: "fail",
-//         message: "Missing required fields",
-//       });
-//     }
-
-//     // 2. Validate emails
-//     if (!validator.isEmail(email)) {
-//       return res.status(400).json({ status: "fail", message: "Invalid email" });
-//     }
-//     if (teamMemberEmail && !validator.isEmail(teamMemberEmail)) {
-//       return res
-//         .status(400)
-//         .json({ status: "fail", message: "Invalid team member email" });
-//     }
-
-//     // 3. Create the main user
-//     const newUser = await User.create({
-//       firstName,
-//       lastName,
-//       email,
-//       accountName,
-//       password,
-//       role: "Viewer",
-//       isInvited: false,
-//     });
-
-//     // 4. Send welcome email to main user
-//     const loginUrl = `${req.protocol}://${req.get("host")}/login`;
-//     try {
-//       await new Email(newUser, loginUrl).sendWelcome();
-//     } catch (emailErr) {
-//       console.error("Failed to send welcome email:", emailErr);
-//       // Continue to allow signup to complete
-//     }
-
-//     // 5. Create the team member if provided
-//     if (teamMemberEmail) {
-//       const tempPassword = crypto.randomBytes(8).toString("hex");
-
-//       const teamMember = await User.create({
-//         firstName: "Team",
-//         lastName: "Member",
-//         email: teamMemberEmail,
-//         accountName,
-//         password: tempPassword,
-//         role: teamMemberRole || "Viewer",
-//         isInvited: true,
-//       });
-
-//       try {
-//         await new Email(
-//           teamMember,
-//           loginUrl,
-//           tempPassword
-//         ).sendTemporaryPassword();
-//       } catch (emailErr) {
-//         console.error("Failed to send team member email:", emailErr);
-//         // Continue to allow signup to complete
-//       }
-//     }
-
-//     // 6. Send success response
-//     res.status(201).json({
-//       status: "success",
-//       data: { user: newUser },
-//     });
-//   } catch (err) {
-//     console.error("Signup error:", err);
-//     res.status(500).json({
-//       status: "error",
-//       message: err.message,
-//     });
-//   }
-// };
 exports.signup = async (req, res) => {
   try {
     const {
@@ -207,15 +53,16 @@ exports.signup = async (req, res) => {
       email,
       accountName,
       password,
+      idToken,
       teamMemberEmail,
       teamMemberRole,
     } = req.body;
 
-    // 1. Validate required fields for main user
-    if (!firstName || !lastName || !email || !password) {
+    // 1. Validate required fields
+    if (!firstName || !lastName || !email || !accountName) {
       return res.status(400).json({
         status: "fail",
-        message: "Missing required fields",
+        message: "First name, last name, email, and account name are required",
       });
     }
 
@@ -223,13 +70,40 @@ exports.signup = async (req, res) => {
     if (!validator.isEmail(email)) {
       return res.status(400).json({ status: "fail", message: "Invalid email" });
     }
-    if (teamMemberEmail && !validator.isEmail(teamMemberEmail)) {
-      return res
-        .status(400)
-        .json({ status: "fail", message: "Invalid team member email" });
+    if (process.env.NODE_ENV === "production") {
+      const emailDomain = `@${email.split("@")[1].toLowerCase()}`;
+      if (!ALLOWED_EMAIL_DOMAINS.includes(emailDomain)) {
+        return res.status(403).json({
+          status: "fail",
+          message: `Email must end with one of: ${ALLOWED_EMAIL_DOMAINS.join(
+            ", "
+          )}`,
+        });
+      }
+    }
+    if (teamMemberEmail) {
+      if (!validator.isEmail(teamMemberEmail)) {
+        return res.status(400).json({
+          status: "fail",
+          message: "Invalid team member email",
+        });
+      }
+      if (process.env.NODE_ENV === "production") {
+        const teamEmailDomain = `@${teamMemberEmail
+          .split("@")[1]
+          .toLowerCase()}`;
+        if (!ALLOWED_EMAIL_DOMAINS.includes(teamEmailDomain)) {
+          return res.status(403).json({
+            status: "fail",
+            message: `Team member email must end with one of: ${ALLOWED_EMAIL_DOMAINS.join(
+              ", "
+            )}`,
+          });
+        }
+      }
     }
 
-    // 3. Check for existing main user email (optional, to avoid hitting unique index)
+    // 3. Check for existing users
     const existingUser = await User.findOne({ email });
     if (existingUser) {
       return res.status(400).json({
@@ -237,8 +111,6 @@ exports.signup = async (req, res) => {
         message: "Email already in use",
       });
     }
-
-    // 4. Check for existing team member email (if provided)
     if (teamMemberEmail) {
       const existingTeamMember = await User.findOne({ email: teamMemberEmail });
       if (existingTeamMember) {
@@ -249,27 +121,77 @@ exports.signup = async (req, res) => {
       }
     }
 
-    // 5. Create the main user
-    const newUser = await User.create({
+    // 4. Handle Google Sign-In
+    let userData = {
       firstName,
       lastName,
       email,
       accountName,
-      password,
       role: "Viewer",
       isInvited: false,
-    });
+      isOAuth: false,
+    };
 
-    // 6. Send welcome email to main user
+    if (idToken) {
+      const ticket = await client.verifyIdToken({
+        idToken,
+        audience: process.env.GOOGLE_CLIENT_ID,
+      });
+      const payload = ticket.getPayload();
+
+      if (!payload.email_verified) {
+        return res.status(400).json({
+          status: "fail",
+          message: "Email not verified by Google",
+        });
+      }
+      if (process.env.NODE_ENV === "production") {
+        const googleEmailDomain = `@${payload.email
+          .split("@")[1]
+          .toLowerCase()}`;
+        if (!ALLOWED_EMAIL_DOMAINS.includes(googleEmailDomain)) {
+          return res.status(403).json({
+            status: "fail",
+            message: `Google email must end with one of: ${ALLOWED_EMAIL_DOMAINS.join(
+              ", "
+            )}`,
+          });
+        }
+      }
+
+      userData = {
+        ...userData,
+        firstName: firstName || payload.given_name,
+        lastName: lastName || payload.family_name,
+        email: payload.email,
+        isOAuth: true,
+      };
+
+      if (password) {
+        userData.password = password; // Let userModel.js hash
+      }
+    } else {
+      if (!password) {
+        return res.status(400).json({
+          status: "fail",
+          message: "Password is required for regular signup",
+        });
+      }
+      userData.password = password; // Let userModel.js hash
+    }
+
+    // 5. Create main user
+    const newUser = await User.create(userData);
+
+    // 6. Send welcome email
     const loginUrl = `${req.protocol}://${req.get("host")}/login`;
     try {
       await new Email(newUser, loginUrl).sendWelcome();
     } catch (emailErr) {
       console.error("Failed to send welcome email:", emailErr);
-      // Continue to allow signup to complete
     }
 
-    // 7. Create the team member if provided
+    // 7. Create team member if provided
     if (teamMemberEmail) {
       const tempPassword = crypto.randomBytes(8).toString("hex");
 
@@ -278,9 +200,10 @@ exports.signup = async (req, res) => {
         lastName: "Member",
         email: teamMemberEmail,
         accountName,
-        password: tempPassword,
+        password: tempPassword, // Let userModel.js hash
         role: teamMemberRole || "Viewer",
         isInvited: true,
+        isOAuth: false,
       });
 
       try {
@@ -291,18 +214,13 @@ exports.signup = async (req, res) => {
         ).sendTemporaryPassword();
       } catch (emailErr) {
         console.error("Failed to send team member email:", emailErr);
-        // Continue to allow signup to complete
       }
     }
 
-    // 8. Send success response
-    res.status(201).json({
-      status: "success",
-      data: { user: newUser },
-    });
+    // 8. Send JWT response
+    createSendToken(newUser, 201, req, res);
   } catch (err) {
     if (err.code === 11000) {
-      // Handle duplicate key error for email
       return res.status(400).json({
         status: "fail",
         message: "Email already in use",
@@ -315,27 +233,99 @@ exports.signup = async (req, res) => {
     });
   }
 };
+
 exports.login = async (req, res) => {
   try {
-    const { email, password } = req.body;
-    if (!email || !password) {
-      return res
-        .status(400)
-        .json({ status: "fail", message: "Provide email and password" });
+    const { email, idToken } = req.body;
+
+    if (!email) {
+      return res.status(400).json({
+        status: "fail",
+        message: "Email is required",
+      });
     }
 
-    const user = await User.findOne({ email }).select("+password");
-    if (!user || !(await user.correctPassword(password, user.password))) {
-      return res
-        .status(401)
-        .json({ status: "fail", message: "Incorrect email or password" });
-    }
+    // Handle Google Sign-In login
+    if (idToken) {
+      // Verify Google ID token
+      const ticket = await client.verifyIdToken({
+        idToken,
+        audience: process.env.GOOGLE_CLIENT_ID,
+      });
+      const payload = ticket.getPayload();
 
-    createSendToken(user, 200, req, res);
+      if (!payload.email_verified) {
+        return res.status(400).json({
+          status: "fail",
+          message: "Email not verified by Google",
+        });
+      }
+      if (process.env.NODE_ENV === "production") {
+        const googleEmailDomain = `@${payload.email
+          .split("@")[1]
+          .toLowerCase()}`;
+        if (!ALLOWED_EMAIL_DOMAINS.includes(googleEmailDomain)) {
+          return res.status(403).json({
+            status: "fail",
+            message: `Google email must end with one of: ${ALLOWED_EMAIL_DOMAINS.join(
+              ", "
+            )}`,
+          });
+        }
+      }
+
+      // Find user by email
+      const user = await User.findOne({ email: payload.email });
+      if (!user) {
+        return res.status(401).json({
+          status: "fail",
+          message: "No account found. Please sign up first.",
+        });
+      }
+      if (!user.isOAuth) {
+        return res.status(400).json({
+          status: "fail",
+          message: "This account was not created with Google Sign-In",
+        });
+      }
+
+      createSendToken(user, 200, req, res);
+    } else {
+      // Regular login
+      const { password } = req.body;
+      if (!password) {
+        return res.status(400).json({
+          status: "fail",
+          message: "Password is required for regular login",
+        });
+      }
+
+      const user = await User.findOne({ email }).select("+password");
+      if (!user || !(await user.correctPassword(password, user.password))) {
+        return res.status(401).json({
+          status: "fail",
+          message: "Incorrect email or password",
+        });
+      }
+      if (user.isOAuth) {
+        return res.status(400).json({
+          status: "fail",
+          message: "This account uses Google Sign-In",
+        });
+      }
+
+      createSendToken(user, 200, req, res);
+    }
   } catch (err) {
-    res.status(500).json({ status: "error", message: "Login failed" });
+    console.error("Login error:", err);
+    res.status(500).json({
+      status: "error",
+      message: "Login failed",
+    });
   }
 };
+
+// ... rest of authController.js (logout, protect, etc.) remains unchanged
 
 exports.logout = (req, res) => {
   const username = req.user?.firstName || req.user?.email || "User";
@@ -360,29 +350,35 @@ exports.protect = async (req, res, next) => {
       token = req.cookies.jwt;
     }
 
-    if (!token) {
-      return res.status(401).json({ status: "fail", message: "Not logged in" });
+    if (!token || token === "loggedout") {
+      return res.status(401).json({
+        status: "fail",
+        message: "Not logged in",
+      });
     }
 
     const decoded = await promisify(jwt.verify)(token, process.env.JWT_SECRET);
     const currentUser = await User.findById(decoded.id);
 
     if (!currentUser) {
-      return res
-        .status(401)
-        .json({ status: "fail", message: "User no longer exists" });
+      return res.status(401).json({
+        status: "fail",
+        message: "User no longer exists",
+      });
     }
 
     if (currentUser.changedPasswordAfter(decoded.iat)) {
-      return res
-        .status(401)
-        .json({ status: "fail", message: "Password recently changed" });
+      return res.status(401).json({
+        status: "fail",
+        message: "Password recently changed",
+      });
     }
 
     req.user = currentUser;
     res.locals.user = currentUser;
     next();
   } catch (err) {
+    console.error("Protect middleware error:", err);
     return res.status(401).json({
       status: "fail",
       message: "Invalid or expired token",
@@ -393,7 +389,7 @@ exports.protect = async (req, res, next) => {
 
 exports.isLoggedIn = async (req, res, next) => {
   try {
-    if (!req.cookies?.jwt) return next();
+    if (!req.cookies?.jwt || req.cookies.jwt === "loggedout") return next();
 
     const decoded = await promisify(jwt.verify)(
       req.cookies.jwt,
@@ -413,114 +409,102 @@ exports.isLoggedIn = async (req, res, next) => {
   next();
 };
 
-// Rate limiter middleware
-
 exports.forgotPassword = async (req, res, next) => {
   try {
-    // 1. Find user by email
     const user = await User.findOne({ email: req.body.email });
     if (!user) {
-      return res.status(404).json({ message: "No user found with that email" });
+      return res.status(404).json({
+        status: "fail",
+        message: "No user found with that email",
+      });
+    }
+    if (user.isOAuth) {
+      return res.status(400).json({
+        status: "fail",
+        message: "Use Google Sign-In to access this account",
+      });
     }
 
-    // 2. Generate reset token
     const resetToken = user.createPasswordResetToken();
     await user.save({ validateBeforeSave: false });
 
-    // 3. Create reset URL
     const resetURL = `${req.protocol}://${req.get(
       "host"
     )}/api/resetPassword/${resetToken}`;
 
-    // 4. Send password reset email using Email class
-    await new Email(user, resetURL).sendPasswordReset();
-
-    // 5. Send response
-    res.status(200).json({
-      status: "success",
-      message: "Token sent to email!",
-      resetToken,
-    });
-  } catch (error) {
-    console.error("Error in forgotPassword:", error);
-    // Clear reset token if email fails
-    if (user) {
+    try {
+      await new Email(user, resetURL).sendPasswordReset();
+      res.status(200).json({
+        status: "success",
+        message: "Token sent to email!",
+      });
+    } catch (emailErr) {
       user.passwordResetToken = undefined;
       user.passwordResetExpires = undefined;
       await user.save({ validateBeforeSave: false });
+      throw emailErr;
     }
-    res
-      .status(500)
-      .json({ message: "Failed to send email", error: error.message });
+  } catch (error) {
+    console.error("Error in forgotPassword:", error);
+    res.status(500).json({
+      status: "error",
+      message: "Failed to send email",
+    });
   }
 };
 
 exports.resetPassword = async (req, res) => {
   try {
-    // Log incoming request details for debugging
-    console.log("Reset Password Request:", {
-      token: req.params.token,
-      body: req.body,
-      method: req.method,
-    });
-
-    // Restrict to PATCH requests
     if (req.method !== "PATCH") {
-      return res
-        .status(405)
-        .json({ status: "error", message: "Method not allowed. Use PATCH." });
+      return res.status(405).json({
+        status: "error",
+        message: "Method not allowed. Use PATCH.",
+      });
     }
 
-    // Validate password
     const { password } = req.body;
-    if (!password) {
-      return res
-        .status(400)
-        .json({ status: "fail", message: "Password is required" });
-    }
-    if (password.length < 8) {
+    if (!password || password.length < 8) {
       return res.status(400).json({
         status: "fail",
         message: "Password must be at least 8 characters",
       });
     }
 
-    // Hash the token from params
     const hashedToken = crypto
       .createHash("sha256")
       .update(req.params.token)
       .digest("hex");
 
-    // Find user with valid token
     const user = await User.findOne({
       passwordResetToken: hashedToken,
       passwordResetExpires: { $gt: Date.now() },
-    }).select("+password"); // Include password field if needed for validation
+    }).select("+password");
 
     if (!user) {
-      return res
-        .status(400)
-        .json({ status: "fail", message: "Token is invalid or expired" });
+      return res.status(400).json({
+        status: "fail",
+        message: "Token is invalid or expired",
+      });
+    }
+    if (user.isOAuth) {
+      return res.status(400).json({
+        status: "fail",
+        message: "Use Google Sign-In to access this account",
+      });
     }
 
-    // Update password and clear reset fields
     user.password = password;
     user.passwordResetToken = undefined;
     user.passwordResetExpires = undefined;
 
-    // Save user, catch validation or save errors
-    await user.save({ validateBeforeSave: true }).catch((err) => {
-      console.error("User save error:", err);
-      throw new Error(`User save failed: ${err.message}`);
-    });
+    await user.save();
 
-    // Call createSendToken
     createSendToken(user, 200, req, res);
   } catch (err) {
     console.error("Reset password error:", err);
     res.status(500).json({
       status: "error",
-      message: `Password reset failed: ${err.message} `,
+      message: "Password reset failed",
     });
   }
 };
@@ -530,16 +514,24 @@ exports.updatePassword = async (req, res) => {
     const { passwordCurrent, password } = req.body;
 
     if (!passwordCurrent || !password) {
-      return res
-        .status(400)
-        .json({ status: "fail", message: "Provide current and new passwords" });
+      return res.status(400).json({
+        status: "fail",
+        message: "Provide current and new passwords",
+      });
     }
 
     const user = await User.findById(req.user.id).select("+password");
+    if (user.isOAuth) {
+      return res.status(400).json({
+        status: "fail",
+        message: "Use Google Sign-In to manage this account",
+      });
+    }
     if (!(await user.correctPassword(passwordCurrent, user.password))) {
-      return res
-        .status(401)
-        .json({ status: "fail", message: "Current password is incorrect" });
+      return res.status(401).json({
+        status: "fail",
+        message: "Current password is incorrect",
+      });
     }
 
     user.password = password;
@@ -547,8 +539,10 @@ exports.updatePassword = async (req, res) => {
 
     createSendToken(user, 200, req, res);
   } catch (err) {
-    res
-      .status(500)
-      .json({ status: "error", message: "Password update failed" });
+    console.error("Update password error:", err);
+    res.status(500).json({
+      status: "error",
+      message: "Password update failed",
+    });
   }
 };

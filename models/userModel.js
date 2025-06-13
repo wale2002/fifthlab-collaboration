@@ -1,3 +1,4 @@
+// models/userModel.js
 const mongoose = require("mongoose");
 const validator = require("validator");
 const bcrypt = require("bcryptjs");
@@ -25,40 +26,32 @@ const userSchema = new mongoose.Schema({
   },
   accountName: {
     type: String,
+    required: [true, "Account name is required"],
     trim: true,
+    minlength: [1, "Account name cannot be empty"],
     maxlength: [100, "Account name cannot exceed 100 characters"],
-    // no longer unique to support teams
   },
   password: {
     type: String,
-    required: [true, "Password is required"],
-    minlength: [4, "Password must be at least 4 characters"],
+    required: false,
+    minlength: [8, "Password must be at least 8 characters"],
     select: false,
   },
+  isOAuth: { type: Boolean, default: false },
   role: {
     type: String,
     enum: {
       values: ["Admin", "Viewer", "Editor"],
-      message: "Role must be an Admin , Viewer, Editor",
+      message: "Role must be Admin, Viewer, or Editor",
     },
     default: "Viewer",
   },
-  isInvited: {
-    type: Boolean,
-    default: false,
-  },
+  isInvited: { type: Boolean, default: false },
   passwordChangedAt: Date,
   passwordResetToken: String,
   passwordResetExpires: Date,
-  active: {
-    type: Boolean,
-    default: true,
-    select: false,
-  },
-  createdAt: {
-    type: Date,
-    default: Date.now,
-  },
+  active: { type: Boolean, default: true, select: false },
+  createdAt: { type: Date, default: Date.now },
 });
 
 // Hash password
@@ -98,15 +91,14 @@ userSchema.methods.changedPasswordAfter = function (jwtTimestamp) {
 };
 
 userSchema.methods.createPasswordResetToken = function () {
-  console.log("Creating reset token...");
   const resetToken = crypto.randomBytes(32).toString("hex");
   this.passwordResetToken = crypto
     .createHash("sha256")
     .update(resetToken)
     .digest("hex");
   this.passwordResetExpires = Date.now() + 10 * 60 * 1000;
-  console.log("Token generated:", resetToken);
   return resetToken;
 };
+
 const User = mongoose.model("User", userSchema);
 module.exports = User;

@@ -1,11 +1,12 @@
+// routes/userRoutes.js
 const express = require("express");
-const authController = require("../controllers/authControllers");
+const authController = require("../controllers/authControllers"); // Fix typo: authControllers -> authController
 const userController = require("../controllers/userController");
 
 const router = express.Router();
 
 // Public routes
-router.post("/signup", authController.signup);
+router.post("/signup", authController.signup); // Fix: Remove parentheses
 router.post("/login", authController.login);
 router.get("/logout", authController.logout);
 router.post("/forgotPassword", authController.forgotPassword);
