@@ -12,7 +12,31 @@ const client = new OAuth2Client({
   jwksUri:
     "https://www.googleapis.com/identitytoolkit/v3/relyingparty/publicKeys", // Firebase certs
 });
+const verifyManually = async (idToken, audience) => {
+  try {
+    const response = await axios.get(
+      "https://www.googleapis.com/identitytoolkit/v3/relyingparty/publicKeys"
+    );
+    const certs = response.data;
+    console.log("Manually fetched certs:", Object.keys(certs));
 
+    const decoded = jwt.decode(idToken, { complete: true });
+    const kid = decoded.header.kid;
+    const pem = certs[kid];
+
+    if (!pem) {
+      throw new Error(`No PEM found for kid: ${kid}`);
+    }
+
+    const verified = jwt.verify(idToken, pem, {
+      audience: [audience, "auth-47fbd"],
+      issuer: "https://securetoken.google.com/auth-47fbd",
+    });
+    return verified;
+  } catch (err) {
+    throw new Error(`Manual verification failed: ${err.message}`);
+  }
+};
 const verifyWithRetry = async (
   idToken,
   audience,
@@ -22,8 +46,13 @@ const verifyWithRetry = async (
   for (let i = 0; i < retries; i++) {
     try {
       const certs = await client.getFederatedSignonCertsAsync();
-      console.log("Fetched Firebase certs:", Object.keys(certs).length, "keys");
-      return await client.verifyIdToken({ idToken, audience });
+      const certKeys = Object.keys(certs);
+      console.log("Fetched Firebase certs:", certKeys.length, "keys", certKeys);
+      const ticket = await client.verifyIdToken({
+        idToken,
+        audience: [audience, "auth-47fbd"], // Support both Google Client ID and Firebase project ID
+      });
+      return ticket;
     } catch (err) {
       if (i === retries - 1) throw err;
       console.warn(
