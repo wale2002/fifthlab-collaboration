@@ -1,4 +1,3 @@
-// controllers/authController.js (full updated code)
 const jwt = require("jsonwebtoken");
 const { promisify } = require("util");
 const bcrypt = require("bcryptjs");
@@ -8,7 +7,32 @@ const Email = require("../utils/email");
 const crypto = require("crypto");
 const validator = require("validator");
 
-const client = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
+const client = new OAuth2Client({
+  clientId: process.env.GOOGLE_CLIENT_ID,
+  jwksUri:
+    "https://www.googleapis.com/identitytoolkit/v3/relyingparty/publicKeys", // Firebase certs
+});
+
+const verifyWithRetry = async (
+  idToken,
+  audience,
+  retries = 3,
+  delay = 1000
+) => {
+  for (let i = 0; i < retries; i++) {
+    try {
+      const certs = await client.getFederatedSignonCertsAsync();
+      console.log("Fetched Firebase certs:", Object.keys(certs).length, "keys");
+      return await client.verifyIdToken({ idToken, audience });
+    } catch (err) {
+      if (i === retries - 1) throw err;
+      console.warn(
+        `Retry ${i + 1}/${retries} for token verification: ${err.message}`
+      );
+      await new Promise((resolve) => setTimeout(resolve, delay));
+    }
+  }
+};
 
 const signToken = (id) => {
   return jwt.sign({ id }, process.env.JWT_SECRET, {
@@ -133,11 +157,13 @@ exports.signup = async (req, res) => {
     };
 
     if (idToken) {
-      const ticket = await client.verifyIdToken({
+      console.log("Signup idToken:", idToken.substring(0, 10) + "...");
+      const ticket = await verifyWithRetry(
         idToken,
-        audience: process.env.GOOGLE_CLIENT_ID,
-      });
+        process.env.GOOGLE_CLIENT_ID
+      );
       const payload = ticket.getPayload();
+      console.log("Signup token payload:", payload);
 
       if (!payload.email_verified) {
         return res.status(400).json({
@@ -200,7 +226,7 @@ exports.signup = async (req, res) => {
         lastName: "Member",
         email: teamMemberEmail,
         accountName,
-        password: tempPassword, // Let userModel.js hash
+        password: tempPassword,
         role: teamMemberRole || "Viewer",
         isInvited: true,
         isOAuth: false,
@@ -226,10 +252,10 @@ exports.signup = async (req, res) => {
         message: "Email already in use",
       });
     }
-    console.error("Signup error:", err);
+    console.error("Signup error:", err.message, err.stack);
     res.status(500).json({
       status: "error",
-      message: "Internal server error",
+      message: `Signup failed: ${err.message}`,
     });
   }
 };
@@ -245,14 +271,14 @@ exports.login = async (req, res) => {
       });
     }
 
-    // Handle Google Sign-In login
     if (idToken) {
-      // Verify Google ID token
-      const ticket = await client.verifyIdToken({
+      console.log("Login idToken:", idToken.substring(0, 10) + "...");
+      const ticket = await verifyWithRetry(
         idToken,
-        audience: process.env.GOOGLE_CLIENT_ID,
-      });
+        process.env.GOOGLE_CLIENT_ID
+      );
       const payload = ticket.getPayload();
+      console.log("Login token payload:", payload);
 
       if (!payload.email_verified) {
         return res.status(400).json({
@@ -274,7 +300,6 @@ exports.login = async (req, res) => {
         }
       }
 
-      // Find user by email
       const user = await User.findOne({ email: payload.email });
       if (!user) {
         return res.status(401).json({
@@ -317,15 +342,13 @@ exports.login = async (req, res) => {
       createSendToken(user, 200, req, res);
     }
   } catch (err) {
-    console.error("Login error:", err);
+    console.error("Login error:", err.message, err.stack);
     res.status(500).json({
       status: "error",
-      message: "Login failed",
+      message: `Login failed: ${err.message}`,
     });
   }
 };
-
-// ... rest of authController.js (logout, protect, etc.) remains unchanged
 
 exports.logout = (req, res) => {
   const username = req.user?.firstName || req.user?.email || "User";
