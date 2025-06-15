@@ -3,7 +3,7 @@ const { promisify } = require("util");
 const User = require("../models/userModel");
 const Email = require("../utils/email");
 const crypto = require("crypto");
-const rateLimit = require("express-rate-limit");
+
 const validator = require("validator");
 
 const signToken = (id) => {
