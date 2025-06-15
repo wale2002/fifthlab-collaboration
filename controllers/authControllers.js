@@ -24,10 +24,11 @@ const verifyManually = async (idToken, audience) => {
       { timeout: 5000 }
     );
     const certs = response.data;
-    console.log("Manually fetched certs:", Object.keys(certs));
+    console.log("Manually fetched certs keys:", Object.keys(certs));
 
     const decoded = jwt.decode(idToken, { complete: true });
     const kid = decoded.header.kid;
+    console.log("idToken kid:", kid);
     const pem = certs[kid];
 
     if (!pem) {
@@ -38,13 +39,6 @@ const verifyManually = async (idToken, audience) => {
       algorithms: ["RS256"],
       audience: [audience, "auth-47fbd"],
       issuer: "https://securetoken.google.com/auth-47fbd",
-    });
-    console.log("Manual verification payload:", {
-      uid: verified.sub,
-      email: verified.email,
-      iss: verified.iss,
-      aud: verified.aud,
-      exp: new Date(verified.exp * 1000).toISOString(),
     });
     return { payload: verified };
   } catch (err) {
@@ -58,9 +52,18 @@ const verifyWithRetry = async (
   retries = 3,
   delay = 1000
 ) => {
+  const decoded = jwt.decode(idToken, { complete: true });
+  console.log("idToken properties:", {
+    kid: decoded?.header?.kid,
+    iss: decoded?.payload?.iss,
+    aud: decoded?.payload?.aud,
+    exp: decoded?.payload?.exp
+      ? new Date(decoded.payload.exp * 1000).toISOString()
+      : "unknown",
+  });
+
   for (let i = 0; i < retries; i++) {
     try {
-      // Primary: Use Firebase Admin SDK
       const decodedToken = await admin.auth().verifyIdToken(idToken);
       console.log("Firebase Admin SDK decoded token:", {
         uid: decodedToken.uid,
@@ -69,11 +72,9 @@ const verifyWithRetry = async (
         aud: decodedToken.aud,
         exp: new Date(decodedToken.exp * 1000).toISOString(),
       });
-
       if (![audience, "auth-47fbd"].includes(decodedToken.aud)) {
         throw new Error("Invalid audience");
       }
-
       return { payload: decodedToken };
     } catch (err) {
       console.warn(
