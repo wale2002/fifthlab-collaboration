@@ -1,21 +1,27 @@
+const admin = require("firebase-admin");
 const jwt = require("jsonwebtoken");
+const axios = require("axios");
 const { promisify } = require("util");
 const bcrypt = require("bcryptjs");
-const { OAuth2Client } = require("google-auth-library");
 const User = require("../models/userModel");
 const Email = require("../utils/email");
 const crypto = require("crypto");
 const validator = require("validator");
 
-const client = new OAuth2Client({
-  clientId: process.env.GOOGLE_CLIENT_ID,
-  jwksUri:
-    "https://www.googleapis.com/identitytoolkit/v3/relyingparty/publicKeys", // Firebase certs
-});
+// Initialize Firebase Admin SDK
+if (!admin.apps.length) {
+  admin.initializeApp({
+    credential: admin.credential.cert(
+      JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT)
+    ),
+  });
+}
+
 const verifyManually = async (idToken, audience) => {
   try {
     const response = await axios.get(
-      "https://www.googleapis.com/identitytoolkit/v3/relyingparty/publicKeys"
+      "https://www.googleapis.com/identitytoolkit/v3/relyingparty/publicKeys",
+      { timeout: 5000 }
     );
     const certs = response.data;
     console.log("Manually fetched certs:", Object.keys(certs));
@@ -29,14 +35,23 @@ const verifyManually = async (idToken, audience) => {
     }
 
     const verified = jwt.verify(idToken, pem, {
+      algorithms: ["RS256"],
       audience: [audience, "auth-47fbd"],
       issuer: "https://securetoken.google.com/auth-47fbd",
     });
-    return verified;
+    console.log("Manual verification payload:", {
+      uid: verified.sub,
+      email: verified.email,
+      iss: verified.iss,
+      aud: verified.aud,
+      exp: new Date(verified.exp * 1000).toISOString(),
+    });
+    return { payload: verified };
   } catch (err) {
     throw new Error(`Manual verification failed: ${err.message}`);
   }
 };
+
 const verifyWithRetry = async (
   idToken,
   audience,
@@ -45,24 +60,37 @@ const verifyWithRetry = async (
 ) => {
   for (let i = 0; i < retries; i++) {
     try {
-      const certs = await client.getFederatedSignonCertsAsync();
-      const certKeys = Object.keys(certs);
-      console.log("Fetched Firebase certs:", certKeys.length, "keys", certKeys);
-      const ticket = await client.verifyIdToken({
-        idToken,
-        audience: [audience, "auth-47fbd"], // Support both Google Client ID and Firebase project ID
+      // Primary: Use Firebase Admin SDK
+      const decodedToken = await admin.auth().verifyIdToken(idToken);
+      console.log("Firebase Admin SDK decoded token:", {
+        uid: decodedToken.uid,
+        email: decodedToken.email,
+        iss: decodedToken.iss,
+        aud: decodedToken.aud,
+        exp: new Date(decodedToken.exp * 1000).toISOString(),
       });
-      return ticket;
+
+      if (![audience, "auth-47fbd"].includes(decodedToken.aud)) {
+        throw new Error("Invalid audience");
+      }
+
+      return { payload: decodedToken };
     } catch (err) {
-      if (i === retries - 1) throw err;
       console.warn(
-        `Retry ${i + 1}/${retries} for token verification: ${err.message}`
+        `Firebase Admin SDK retry ${i + 1}/${retries} failed: ${err.message}`
       );
+      if (i === retries - 1) {
+        console.warn("Falling back to manual verification");
+        try {
+          return await verifyManually(idToken, audience);
+        } catch (manualErr) {
+          throw new Error(`Token verification failed: ${manualErr.message}`);
+        }
+      }
       await new Promise((resolve) => setTimeout(resolve, delay));
     }
   }
 };
-
 const signToken = (id) => {
   return jwt.sign({ id }, process.env.JWT_SECRET, {
     expiresIn: process.env.JWT_EXPIRES_IN,
@@ -293,83 +321,66 @@ exports.login = async (req, res) => {
   try {
     const { email, idToken } = req.body;
 
-    if (!email) {
+    if (!email || !idToken) {
       return res.status(400).json({
         status: "fail",
-        message: "Email is required",
+        message: "Please provide email and idToken",
       });
     }
 
-    if (idToken) {
-      console.log("Login idToken:", idToken.substring(0, 10) + "...");
-      const ticket = await verifyWithRetry(
-        idToken,
-        process.env.GOOGLE_CLIENT_ID
-      );
-      const payload = ticket.getPayload();
-      console.log("Login token payload:", payload);
+    console.log("Login idToken:", idToken.substring(0, 10) + "...");
+    const ticket = await verifyWithRetry(idToken, process.env.GOOGLE_CLIENT_ID);
+    const payload = ticket.getPayload();
+    console.log("Login token payload:", payload);
 
-      if (!payload.email_verified) {
-        return res.status(400).json({
-          status: "fail",
-          message: "Email not verified by Google",
-        });
-      }
-      if (process.env.NODE_ENV === "production") {
-        const googleEmailDomain = `@${payload.email
-          .split("@")[1]
-          .toLowerCase()}`;
-        if (!ALLOWED_EMAIL_DOMAINS.includes(googleEmailDomain)) {
-          return res.status(403).json({
-            status: "fail",
-            message: `Google email must end with one of: ${ALLOWED_EMAIL_DOMAINS.join(
-              ", "
-            )}`,
-          });
-        }
-      }
-
-      const user = await User.findOne({ email: payload.email });
-      if (!user) {
-        return res.status(401).json({
-          status: "fail",
-          message: "No account found. Please sign up first.",
-        });
-      }
-      if (!user.isOAuth) {
-        return res.status(400).json({
-          status: "fail",
-          message: "This account was not created with Google Sign-In",
-        });
-      }
-
-      createSendToken(user, 200, req, res);
-    } else {
-      // Regular login
-      const { password } = req.body;
-      if (!password) {
-        return res.status(400).json({
-          status: "fail",
-          message: "Password is required for regular login",
-        });
-      }
-
-      const user = await User.findOne({ email }).select("+password");
-      if (!user || !(await user.correctPassword(password, user.password))) {
-        return res.status(401).json({
-          status: "fail",
-          message: "Incorrect email or password",
-        });
-      }
-      if (user.isOAuth) {
-        return res.status(400).json({
-          status: "fail",
-          message: "This account uses Google Sign-In",
-        });
-      }
-
-      createSendToken(user, 200, req, res);
+    // Check email matches token
+    if (payload.email !== email) {
+      return res.status(401).json({
+        status: "fail",
+        message: "Email mismatch",
+      });
     }
+
+    // Ensure email is verified by Google
+    if (!payload.email_verified) {
+      return res.status(400).json({
+        status: "fail",
+        message: "Email not verified by Google",
+      });
+    }
+
+    // Optional domain restriction in production
+    if (process.env.NODE_ENV === "production") {
+      const googleEmailDomain = `@${payload.email.split("@")[1].toLowerCase()}`;
+      if (!ALLOWED_EMAIL_DOMAINS.includes(googleEmailDomain)) {
+        return res.status(403).json({
+          status: "fail",
+          message: `Google email must end with one of: ${ALLOWED_EMAIL_DOMAINS.join(
+            ", "
+          )}`,
+        });
+      }
+    }
+
+    // Check if user exists
+    let user = await User.findOne({ email });
+    if (!user) {
+      return res.status(401).json({
+        status: "fail",
+        message: "No account found. Please sign up first.",
+      });
+    }
+
+    // Check if this is an OAuth account
+    if (!user.isOAuth) {
+      return res.status(400).json({
+        status: "fail",
+        message: "This account was not created with Google Sign-In",
+      });
+    }
+
+    // Send token
+    createSendToken(user, 200, req, res);
   } catch (err) {
     console.error("Login error:", err.message, err.stack);
     res.status(500).json({

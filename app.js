@@ -8,6 +8,7 @@ const cookieParser = require("cookie-parser");
 const morgan = require("morgan");
 const helmet = require("helmet");
 const cors = require("cors");
+const testRoutes = require("./routes/testRoutes");
 const userRoutes = require("./routes/userRoutes");
 const messageRoutes = require("./routes/messageRoutes");
 const AppError = require("./utils/appError");
@@ -51,6 +52,7 @@ app.get("/", (req, res) => {
 });
 app.get("/favicon.ico", (req, res) => res.status(204).end());
 
+app.use("/", testRoutes);
 app.use("/api/v1/users", userRoutes);
 app.use("/api/v1/messages", messageRoutes);
 
