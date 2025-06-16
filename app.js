@@ -17,9 +17,9 @@ const app = express();
 
 const allowedOrigins = [
   process.env.FRONTEND_URL || "https://fifthlab-collaboration.onrender.com",
-  "http://localhost:3000", // your dev frontend
-  "http://localhost:5173", // external dev's frontend (e.g. Vite server)
-  "https://fifths.netlify.app", // add your Netlify frontend
+  "http://localhost:3000",
+  "http://localhost:5173",
+  "https://fifths.netlify.app",
   "https://fise.netlify.app",
   "https://fiftth.netlify.app",
 ];
@@ -27,16 +27,17 @@ const allowedOrigins = [
 app.use(
   cors({
     origin: function (origin, callback) {
-      // Allow requests with no origin (like mobile apps or server-to-server)
+      console.log("CORS Origin:", origin); // Debug logging
       if (!origin || allowedOrigins.includes(origin)) {
         return callback(null, true);
       }
-      callback(new AppError("CORS policy: This origin is not allowed", 403));
+      callback(new AppError(`CORS policy: Origin ${origin} not allowed`, 403));
     },
     credentials: true,
+    methods: ["GET", "POST", "PATCH", "DELETE", "PUT"],
+    allowedHeaders: ["Content-Type", "Authorization"],
   })
 );
-
 app.use(helmet());
 app.use(express.urlencoded({ extended: true }));
 app.use(express.json());

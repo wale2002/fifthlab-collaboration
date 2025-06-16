@@ -5,7 +5,6 @@ const Email = require("../utils/email");
 const crypto = require("crypto");
 
 const validator = require("validator");
-
 const signToken = (id) => {
   return jwt.sign({ id }, process.env.JWT_SECRET, {
     expiresIn: process.env.JWT_EXPIRES_IN,
@@ -28,177 +27,12 @@ const createSendToken = (user, statusCode, req, res) => {
   user.password = undefined;
 
   res.status(statusCode).json({
-    status: "success",
+    success: true, // Align with frontend expectations
     token,
     data: { user },
   });
 };
 
-// exports.signup = async (req, res) => {
-//   try {
-//     const {
-//       firstName,
-//       lastName,
-//       email,
-//       accountName,
-//       password,
-//       teamMemberEmail,
-//       teamMemberRole,
-//     } = req.body;
-
-//     // 1. Validate required fields for main user
-//     if (!firstName || !lastName || !email || !password) {
-//       return res.status(400).json({
-//         status: "fail",
-//         message: "Missing required fields",
-//       });
-//     }
-
-//     // 2. Validate emails
-//     if (!validator.isEmail(email)) {
-//       return res.status(400).json({ status: "fail", message: "Invalid email" });
-//     }
-//     if (teamMemberEmail && !validator.isEmail(teamMemberEmail)) {
-//       return res
-//         .status(400)
-//         .json({ status: "fail", message: "Invalid team member email" });
-//     }
-
-//     // 3. Check if accountName already exists (active users only)
-
-//     // 4. Create the main user
-//     const newUser = await User.create({
-//       firstName,
-//       lastName,
-//       email,
-//       password,
-//       role: "Viewer",
-//       isInvited: false,
-//     });
-
-//     // 5. Create the team member if provided
-//     if (teamMemberEmail) {
-//       const tempPassword = crypto.randomBytes(8).toString("hex");
-
-//       const teamMember = await User.create({
-//         firstName: "Team",
-//         lastName: "Member",
-//         email: teamMemberEmail,
-//         accountName: accountName, // same accountName as main user
-//         password: tempPassword,
-//         role: teamMemberRole || "Viewer",
-//         isInvited: true,
-//       });
-
-//       try {
-//         await new Email(teamMember, tempPassword).sendTemporaryPassword();
-//       } catch (emailErr) {
-//         console.error("Email failed to send to team member:", emailErr);
-//       }
-//     }
-
-//     // 6. Send success response
-//     res.status(201).json({
-//       status: "success",
-//       data: { user: newUser },
-//     });
-//   } catch (err) {
-//     res.status(500).json({
-//       status: "error",
-//       message: err.message,
-//     });
-//   }
-// };
-// controllers/authController.js (only showing the signup function for brevity)
-// exports.signup = async (req, res) => {
-//   try {
-//     const {
-//       firstName,
-//       lastName,
-//       email,
-//       accountName,
-//       password,
-//       teamMemberEmail,
-//       teamMemberRole,
-//     } = req.body;
-
-//     // 1. Validate required fields for main user
-//     if (!firstName || !lastName || !email || !password) {
-//       return res.status(400).json({
-//         status: "fail",
-//         message: "Missing required fields",
-//       });
-//     }
-
-//     // 2. Validate emails
-//     if (!validator.isEmail(email)) {
-//       return res.status(400).json({ status: "fail", message: "Invalid email" });
-//     }
-//     if (teamMemberEmail && !validator.isEmail(teamMemberEmail)) {
-//       return res
-//         .status(400)
-//         .json({ status: "fail", message: "Invalid team member email" });
-//     }
-
-//     // 3. Create the main user
-//     const newUser = await User.create({
-//       firstName,
-//       lastName,
-//       email,
-//       accountName,
-//       password,
-//       role: "Viewer",
-//       isInvited: false,
-//     });
-
-//     // 4. Send welcome email to main user
-//     const loginUrl = `${req.protocol}://${req.get("host")}/login`;
-//     try {
-//       await new Email(newUser, loginUrl).sendWelcome();
-//     } catch (emailErr) {
-//       console.error("Failed to send welcome email:", emailErr);
-//       // Continue to allow signup to complete
-//     }
-
-//     // 5. Create the team member if provided
-//     if (teamMemberEmail) {
-//       const tempPassword = crypto.randomBytes(8).toString("hex");
-
-//       const teamMember = await User.create({
-//         firstName: "Team",
-//         lastName: "Member",
-//         email: teamMemberEmail,
-//         accountName,
-//         password: tempPassword,
-//         role: teamMemberRole || "Viewer",
-//         isInvited: true,
-//       });
-
-//       try {
-//         await new Email(
-//           teamMember,
-//           loginUrl,
-//           tempPassword
-//         ).sendTemporaryPassword();
-//       } catch (emailErr) {
-//         console.error("Failed to send team member email:", emailErr);
-//         // Continue to allow signup to complete
-//       }
-//     }
-
-//     // 6. Send success response
-//     res.status(201).json({
-//       status: "success",
-//       data: { user: newUser },
-//     });
-//   } catch (err) {
-//     console.error("Signup error:", err);
-//     res.status(500).json({
-//       status: "error",
-//       message: err.message,
-//     });
-//   }
-// };
 exports.signup = async (req, res) => {
   try {
     const {
@@ -209,10 +43,11 @@ exports.signup = async (req, res) => {
       password,
       teamMemberEmail,
       teamMemberRole,
+      isOAuth = false, // Added for Google OAuth
     } = req.body;
 
     // 1. Validate required fields for main user
-    if (!firstName || !lastName || !email || !password) {
+    if (!firstName || !lastName || !email || (!password && !isOAuth)) {
       return res.status(400).json({
         status: "fail",
         message: "Missing required fields",
@@ -229,16 +64,21 @@ exports.signup = async (req, res) => {
         .json({ status: "fail", message: "Invalid team member email" });
     }
 
-    // 3. Check for existing main user email (optional, to avoid hitting unique index)
-    const existingUser = await User.findOne({ email });
+    // 3. Check for existing main user email and accountName
+    const existingUser = await User.findOne({
+      $or: [{ email }, { accountName }],
+    });
     if (existingUser) {
       return res.status(400).json({
         status: "fail",
-        message: "Email already in use",
+        message:
+          existingUser.email === email
+            ? "Email already in use"
+            : "Account name already taken",
       });
     }
 
-    // 4. Check for existing team member email (if provided)
+    // 4. Check for existing team member email
     if (teamMemberEmail) {
       const existingTeamMember = await User.findOne({ email: teamMemberEmail });
       if (existingTeamMember) {
@@ -255,18 +95,20 @@ exports.signup = async (req, res) => {
       lastName,
       email,
       accountName,
-      password,
+      password: isOAuth ? undefined : password, // No password for OAuth users
       role: "Viewer",
       isInvited: false,
+      isOAuth,
     });
 
-    // 6. Send welcome email to main user
-    const loginUrl = `${req.protocol}://${req.get("host")}/login`;
-    try {
-      await new Email(newUser, loginUrl).sendWelcome();
-    } catch (emailErr) {
-      console.error("Failed to send welcome email:", emailErr);
-      // Continue to allow signup to complete
+    // 6. Send welcome email to main user (skip for OAuth users)
+    if (!isOAuth) {
+      const loginUrl = `${req.protocol}://${req.get("host")}/login`;
+      try {
+        await new Email(newUser, loginUrl).sendWelcome();
+      } catch (emailErr) {
+        console.error("Failed to send welcome email:", emailErr);
+      }
     }
 
     // 7. Create the team member if provided
@@ -283,6 +125,7 @@ exports.signup = async (req, res) => {
         isInvited: true,
       });
 
+      const loginUrl = `${req.protocol}://${req.get("host")}/login`;
       try {
         await new Email(
           teamMember,
@@ -291,21 +134,16 @@ exports.signup = async (req, res) => {
         ).sendTemporaryPassword();
       } catch (emailErr) {
         console.error("Failed to send team member email:", emailErr);
-        // Continue to allow signup to complete
       }
     }
 
-    // 8. Send success response
-    res.status(201).json({
-      status: "success",
-      data: { user: newUser },
-    });
+    // 8. Send success response with token
+    createSendToken(newUser, 201, req, res);
   } catch (err) {
     if (err.code === 11000) {
-      // Handle duplicate key error for email
       return res.status(400).json({
         status: "fail",
-        message: "Email already in use",
+        message: "Email or account name already in use",
       });
     }
     console.error("Signup error:", err);
@@ -315,6 +153,7 @@ exports.signup = async (req, res) => {
     });
   }
 };
+
 exports.login = async (req, res) => {
   try {
     const { email, password } = req.body;
