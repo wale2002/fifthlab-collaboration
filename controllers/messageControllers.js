@@ -4,71 +4,41 @@ const User = require("../models/userModel");
 const catchAsync = require("../utils/catchAsync");
 const AppError = require("../utils/appError");
 
+// server/controllers/messageController.js
 exports.createChat = catchAsync(async (req, res, next) => {
-  const { recipient, isGroupChat, groupName, members } = req.body;
+  const { recipient, isGroupChat } = req.body;
+  const currentUser = req.user;
 
-  // For one-on-one chats, ensure recipient is provided
-  if (!isGroupChat && !recipient) {
-    return next(new AppError("Recipient is required for one-on-one chat", 400));
+  if (!recipient && !isGroupChat) {
+    return next(new AppError("Recipient is required for direct chats", 400));
   }
 
-  // For group chats, ensure groupName and members are provided
-  if (isGroupChat && (!groupName || !members || !members.length)) {
-    return next(
-      new AppError("Group name and members are required for group chat", 400)
-    );
+  const recipientUser = await User.findById(recipient);
+  if (!recipientUser) {
+    return next(new AppError("Recipient not found", 404));
   }
 
-  let chatData;
-  if (isGroupChat) {
-    // Validate all members exist and are active
-    const users = await User.find({ _id: { $in: members }, active: true });
-    if (users.length !== members.length) {
-      return next(
-        new AppError("One or more members are invalid or inactive", 404)
-      );
-    }
-    chatData = {
-      members: members.map((userId) => ({ user: userId, unreadCount: 0 })),
-      isGroupChat: true,
-      groupName,
-      groupAdmin: [req.user._id],
-    };
-  } else {
-    // Check if one-on-one chat already exists
-    const existingChat = await Chat.findOne({
-      isGroupChat: false,
-      members: {
-        $all: [
-          { $elemMatch: { user: req.user._id } },
-          { $elemMatch: { user: recipient } },
-        ],
-      },
-    });
-    if (existingChat) {
-      return res.status(200).json({
-        status: "success",
-        data: { chat: existingChat },
-      });
-    }
-    // Validate recipient
-    const recipientUser = await User.findOne({ _id: recipient, active: true });
-    if (!recipientUser) {
-      return next(new AppError("Recipient does not exist or is inactive", 404));
-    }
-    chatData = {
-      members: [
-        { user: req.user._id, unreadCount: 0 },
-        { user: recipient, unreadCount: 0 },
-      ],
-      isGroupChat: false,
-    };
-  }
+  const members = [
+    { userId: currentUser._id, name: currentUser.name, unreadCount: 0 },
+    { userId: recipientUser._id, name: recipientUser.name, unreadCount: 0 },
+  ];
 
-  const chat = await Chat.create(chatData);
+  const chat = await Chat.create({
+    isGroupChat,
+    members,
+    groupName: isGroupChat ? req.body.groupName : undefined,
+  });
+
   res.status(201).json({
-    status: "success",
-    data: { chat },
+    success: true,
+    data: {
+      id: chat._id.toString(),
+      isGroupChat: chat.isGroupChat,
+      members: chat.members,
+      groupName: chat.groupName,
+      createdAt: chat.createdAt,
+      updatedAt: chat.updatedAt,
+    },
   });
 });
 
@@ -239,7 +209,7 @@ exports.getAllUsers = catchAsync(async (req, res, next) => {
   }
 
   const users = await User.find(query)
-    .select("firstName lastName")
+    .select("firstName lastName email accountName profilePicture")
     .skip(skip)
     .limit(Number(limit));
 
@@ -249,7 +219,11 @@ exports.getAllUsers = catchAsync(async (req, res, next) => {
     data: {
       users: users.map((user) => ({
         id: user._id,
-        name: `${user.firstName} ${user.lastName}`,
+        firstName: user.firstName,
+        lastName: user.lastName,
+        email: user.email,
+        accountName: user.accountName,
+        profilePicture: user.profilePicture,
       })),
     },
   });

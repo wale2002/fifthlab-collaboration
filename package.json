@@ -43,6 +43,7 @@
     "xss-clean": "^0.1.4"
   },
   "devDependencies": {
-    "nodemon": "^3.1.10"
+    "nodemon": "^3.1.10",
+    "newman": "^6.1.3"
   }
 }
