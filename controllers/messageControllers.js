@@ -1,41 +1,52 @@
+// backend/controllers/messageController.js
 const Message = require("../models/messageModel");
 const Chat = require("../models/chatModel");
 const User = require("../models/userModel");
 const catchAsync = require("../utils/catchAsync");
 const AppError = require("../utils/appError");
 
-// server/controllers/messageController.js
 exports.createChat = catchAsync(async (req, res, next) => {
-  const { recipient, isGroupChat } = req.body;
+  const { recipients, isGroupChat, groupName } = req.body;
   const currentUser = req.user;
 
-  if (!recipient && !isGroupChat) {
-    return next(new AppError("Recipient is required for direct chats", 400));
+  if (!recipients || !Array.isArray(recipients) || recipients.length === 0) {
+    return next(new AppError("At least one recipient is required", 400));
   }
 
-  const recipientUser = await User.findById(recipient);
-  if (!recipientUser) {
-    return next(new AppError("Recipient not found", 404));
+  // Validate recipients
+  const recipientUsers = await User.find({ _id: { $in: recipients } });
+  if (recipientUsers.length !== recipients.length) {
+    return next(new AppError("One or more recipients not found", 404));
   }
 
+  // Include current user in members
   const members = [
-    { userId: currentUser._id, name: currentUser.name, unreadCount: 0 },
-    { userId: recipientUser._id, name: recipientUser.name, unreadCount: 0 },
+    { user: currentUser._id, unreadCount: 0 },
+    ...recipientUsers.map((u) => ({ user: u._id, unreadCount: 0 })),
   ];
 
-  const chat = await Chat.create({
+  const chatData = {
     isGroupChat,
     members,
-    groupName: isGroupChat ? req.body.groupName : undefined,
-  });
+    ...(isGroupChat &&
+      groupName && { groupName, groupAdmin: [currentUser._id] }),
+  };
+
+  const chat = await Chat.create(chatData);
+  await chat.populate("members.user", "firstName lastName");
 
   res.status(201).json({
     success: true,
     data: {
       id: chat._id.toString(),
       isGroupChat: chat.isGroupChat,
-      members: chat.members,
       groupName: chat.groupName,
+      members: chat.members.map((m) => ({
+        userId: m.user._id.toString(),
+        name: `${m.user.firstName} ${m.user.lastName}`,
+        unreadCount: m.unreadCount,
+      })),
+      lastMessage: null,
       createdAt: chat.createdAt,
       updatedAt: chat.updatedAt,
     },
@@ -43,44 +54,46 @@ exports.createChat = catchAsync(async (req, res, next) => {
 });
 
 exports.getChats = catchAsync(async (req, res, next) => {
-  const {
-    page = 1,
-    limit = 10,
-    sortBy = "updatedAt",
-    sortOrder = "desc",
-  } = req.query;
-  const skip = (page - 1) * limit;
-  const sort = { [sortBy]: sortOrder === "desc" ? -1 : 1 };
+  const { search } = req.query;
+  let chats = await Chat.find({ "members.user": req.user.id }).populate(
+    "members.user",
+    "firstName lastName"
+  );
 
-  const chats = await Chat.find({
-    members: { $elemMatch: { user: req.user._id } },
-  })
-    .sort(sort)
-    .skip(skip)
-    .limit(Number(limit))
-    .select("members lastMessage isGroupChat groupName");
+  if (search && typeof search === "string") {
+    chats = chats.filter((chat) =>
+      chat.isGroupChat
+        ? chat.groupName?.toLowerCase().includes(search.toLowerCase())
+        : chat.members.some(
+            (m) =>
+              m.user._id.toString() !== req.user.id &&
+              `${m.user.firstName} ${m.user.lastName}`
+                .toLowerCase()
+                .includes(search.toLowerCase())
+          )
+    );
+  }
 
   res.status(200).json({
-    status: "success",
-    results: chats.length,
-    data: {
-      chats: chats.map((chat) => ({
-        id: chat._id,
-        isGroupChat: chat.isGroupChat,
-        groupName: chat.groupName,
-        members: chat.members.map((m) => ({
-          userId: m.user._id,
-          name: `${m.user.firstName} ${m.user.lastName}`,
-          unreadCount: m.unreadCount,
-        })),
-        lastMessage: chat.lastMessage
-          ? {
-              content: chat.lastMessage.preview,
-              timestamp: chat.lastMessage.timestamp,
-            }
-          : null,
+    success: true,
+    data: chats.map((chat) => ({
+      id: chat._id.toString(),
+      isGroupChat: chat.isGroupChat,
+      groupName: chat.groupName,
+      members: chat.members.map((m) => ({
+        userId: m.user._id.toString(),
+        name: `${m.user.firstName} ${m.user.lastName}`,
+        unreadCount: m.unreadCount,
       })),
-    },
+      lastMessage: chat.lastMessage
+        ? {
+            id: chat.lastMessage._id,
+            content: chat.lastMessage.content,
+            photo: chat.lastMessage.photo,
+            timestamp: chat.lastMessage.createdAt,
+          }
+        : null,
+    })),
   });
 });
 
@@ -94,7 +107,7 @@ exports.getMessages = catchAsync(async (req, res, next) => {
   const chat = await Chat.findOne({
     _id: chatId,
     members: { $elemMatch: { user: req.user._id } },
-  });
+  }).populate("members.user", "firstName lastName");
   if (!chat) {
     return next(new AppError("Chat not found or you are not a member", 404));
   }
@@ -104,7 +117,7 @@ exports.getMessages = catchAsync(async (req, res, next) => {
 
   const messages = await Message.find(query)
     .populate("sender", "firstName lastName")
-    .sort("-timestamp")
+    .sort("-createdAt")
     .skip((page - 1) * limit)
     .limit(Number(limit));
 
@@ -112,12 +125,23 @@ exports.getMessages = catchAsync(async (req, res, next) => {
     status: "success",
     results: messages.length,
     data: {
+      chat: {
+        id: chat._id.toString(),
+        isGroupChat: chat.isGroupChat,
+        groupName: chat.groupName,
+        members: chat.members.map((m) => ({
+          userId: m.user._id.toString(),
+          name: `${m.user.firstName} ${m.user.lastName}`,
+          unreadCount: m.unreadCount,
+        })),
+      },
       messages: messages.map((msg) => ({
-        id: msg._id,
-        sender: msg.sender._id,
+        id: msg._id.toString(),
+        sender: msg.sender._id.toString(),
         senderName: `${msg.sender.firstName} ${msg.sender.lastName}`,
         content: msg.content,
-        timestamp: msg.timestamp,
+        photo: msg.photo,
+        timestamp: msg.createdAt,
         isRead: msg.isRead,
       })),
     },
@@ -125,10 +149,10 @@ exports.getMessages = catchAsync(async (req, res, next) => {
 });
 
 exports.sendMessage = catchAsync(async (req, res, next) => {
-  const { chatId, content } = req.body;
+  const { chatId, content, photo } = req.body;
 
-  if (!chatId || !content) {
-    return next(new AppError("Chat ID and content are required", 400));
+  if (!chatId || (!content && !photo)) {
+    return next(new AppError("Chat ID and content or photo are required", 400));
   }
 
   // Verify user is part of the chat
@@ -144,10 +168,19 @@ exports.sendMessage = catchAsync(async (req, res, next) => {
     sender: req.user._id,
     chat: chatId,
     content,
+    photo,
+    isRead: false,
   });
 
+  await message.populate("sender", "firstName lastName");
+
   // Update chat's lastMessage and increment unreadCount for other members
-  chat.lastMessage = message._id;
+  chat.lastMessage = {
+    _id: message._id,
+    content: message.content,
+    photo: message.photo,
+    createdAt: message.createdAt,
+  };
   chat.members.forEach((member) => {
     if (member.user.toString() !== req.user._id.toString()) {
       member.unreadCount += 1;
@@ -159,9 +192,13 @@ exports.sendMessage = catchAsync(async (req, res, next) => {
     status: "success",
     message: "Message sent successfully",
     data: {
-      id: message._id,
+      id: message._id.toString(),
+      sender: message.sender._id.toString(),
+      senderName: `${message.sender.firstName} ${message.sender.lastName}`,
       content: message.content,
-      timestamp: message.timestamp,
+      photo: message.photo,
+      timestamp: message.createdAt,
+      isRead: message.isRead,
     },
   });
 });
@@ -209,7 +246,7 @@ exports.getAllUsers = catchAsync(async (req, res, next) => {
   }
 
   const users = await User.find(query)
-    .select("firstName lastName email accountName profilePicture")
+    .select("firstName lastName email accountName")
     .skip(skip)
     .limit(Number(limit));
 
@@ -218,12 +255,11 @@ exports.getAllUsers = catchAsync(async (req, res, next) => {
     results: users.length,
     data: {
       users: users.map((user) => ({
-        id: user._id,
+        id: user._id.toString(),
         firstName: user.firstName,
         lastName: user.lastName,
         email: user.email,
         accountName: user.accountName,
-        profilePicture: user.profilePicture,
       })),
     },
   });
@@ -246,7 +282,7 @@ exports.toggleArchive = catchAsync(async (req, res, next) => {
     status: "success",
     message: `Chat ${chat.isArchived ? "archived" : "unarchived"} successfully`,
     data: {
-      id: chat._id,
+      id: chat._id.toString(),
       isArchived: chat.isArchived,
     },
   });

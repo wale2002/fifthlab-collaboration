@@ -10,31 +10,86 @@ const filterObj = (obj, ...allowedFields) => {
   return newObj;
 };
 
-exports.getMe = (req, res, next) => {
-  req.params.id = req.user.id;
-  next();
-};
+exports.getMe = catchAsync(async (req, res, next) => {
+  const user = await User.findById(req.user.id).select(
+    "firstName lastName email accountName"
+  );
+
+  res.status(200).json({
+    success: true,
+    data: user
+      ? {
+          id: user._id.toString(),
+          name: `${user.firstName} ${user.lastName}`,
+          email: user.email,
+          accountName: user.accountName,
+        }
+      : null,
+  });
+});
 
 exports.getAllUsers = catchAsync(async (req, res, next) => {
-  const users = await User.find().select("-password");
+  const { page = 1, limit = 50, search } = req.query;
+  const skip = (page - 1) * limit;
+
+  const query = { active: true };
+  if (search) {
+    query.$or = [
+      { firstName: { $regex: search, $options: "i" } },
+      { lastName: { $regex: search, $options: "i" } },
+    ];
+  }
+
+  const users = await User.find(query)
+    .select("firstName lastName email accountName")
+    .skip(skip)
+    .limit(Number(limit));
+
   res.status(200).json({
     status: "success",
     results: users.length,
-    data: { users },
+    data: {
+      users: users.map((user) => ({
+        id: user._id.toString(),
+        firstName: user.firstName,
+        lastName: user.lastName,
+        email: user.email,
+        accountName: user.accountName,
+      })),
+    },
   });
 });
-
-exports.getUser = catchAsync(async (req, res, next) => {
-  const user = await User.findById(req.params.id).select("-password");
-  if (!user) {
-    return next(new AppError("No user found with that ID", 404));
+exports.searchUsers = catchAsync(async (req, res, next) => {
+  const { search } = req.query;
+  if (!search || typeof search !== "string") {
+    return res.status(200).json({
+      status: "success",
+      results: 0,
+      data: { users: [] },
+    });
   }
+
+  const users = await User.find({
+    $or: [
+      { firstName: { $regex: search, $options: "i" } },
+      { lastName: { $regex: search, $options: "i" } },
+    ],
+  }).select("firstName lastName email accountName");
+
   res.status(200).json({
     status: "success",
-    data: { user },
+    results: users.length,
+    data: {
+      users: users.map((user) => ({
+        id: user._id.toString(),
+        firstName: user.firstName,
+        lastName: user.lastName,
+        email: user.email,
+        accountName: user.accountName,
+      })),
+    },
   });
 });
-
 exports.updateMe = catchAsync(async (req, res, next) => {
   // Prevent password updates
   if (req.body.password || req.body.passwordConfirm) {

@@ -30,6 +30,11 @@ const messageSchema = new mongoose.Schema({
     type: Date,
     default: Date.now,
   },
+  photo: {
+    // New field for photo URLs
+    type: String,
+    trim: true,
+  },
 });
 
 // Generate preview before saving
