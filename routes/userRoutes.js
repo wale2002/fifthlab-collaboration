@@ -16,7 +16,7 @@ router.patch("/resetPassword/:token", authController.resetPassword);
 router.use(authController.protect);
 
 router.patch("/updateMyPassword", authController.updatePassword);
-router.get("/me", userController.getMe, userController.getUser);
+router.get("/me", userController.getMe);
 router.patch("/updateMe", userController.updateMe);
 router.delete("/deleteMe", userController.deleteMe);
 router.get("/search", userController.searchUsers);
@@ -24,7 +24,7 @@ router.get("/search", userController.searchUsers);
 // router.use(authController.restrictTo("admin"));
 
 // router.get("/", userController.getAllUsers);
-router.get("/:id", userController.getUser);
+
 router.patch("/:id", userController.updateUser);
 router.delete("/:id", userController.deleteUser);
 router.post("/", userController.createUser);
