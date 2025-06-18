@@ -4,16 +4,18 @@ const Chat = require("../models/chatModel");
 const User = require("../models/userModel");
 const catchAsync = require("../utils/catchAsync");
 const AppError = require("../utils/appError");
+const pusher = require("../pusher");
 
 exports.createChat = catchAsync(async (req, res, next) => {
   const { recipients, isGroupChat, groupName } = req.body;
   const currentUser = req.user;
 
+  // Validate recipients
   if (!recipients || !Array.isArray(recipients) || recipients.length === 0) {
     return next(new AppError("At least one recipient is required", 400));
   }
 
-  // Validate recipients
+  // Validate recipient users
   const recipientUsers = await User.find({ _id: { $in: recipients } });
   if (recipientUsers.length !== recipients.length) {
     return next(new AppError("One or more recipients not found", 404));
@@ -25,6 +27,7 @@ exports.createChat = catchAsync(async (req, res, next) => {
     ...recipientUsers.map((u) => ({ user: u._id, unreadCount: 0 })),
   ];
 
+  // Prepare chat data
   const chatData = {
     isGroupChat,
     members,
@@ -32,9 +35,14 @@ exports.createChat = catchAsync(async (req, res, next) => {
       groupName && { groupName, groupAdmin: [currentUser._id] }),
   };
 
+  // Create chat
   const chat = await Chat.create(chatData);
   await chat.populate("members.user", "firstName lastName");
 
+  // Trigger Pusher event
+  pusher.trigger("chats", "new-chat", { chatId: chat._id.toString() });
+
+  // Send response
   res.status(201).json({
     success: true,
     data: {
@@ -152,6 +160,7 @@ exports.getMessages = catchAsync(async (req, res, next) => {
 exports.sendMessage = catchAsync(async (req, res, next) => {
   const { chatId, content, photo } = req.body;
 
+  // Validate input
   if (!chatId || (!content && !photo)) {
     return next(new AppError("Chat ID and content or photo are required", 400));
   }
@@ -165,6 +174,7 @@ exports.sendMessage = catchAsync(async (req, res, next) => {
     return next(new AppError("Chat not found or you are not a member", 404));
   }
 
+  // Create message
   const message = await Message.create({
     sender: req.user._id,
     chat: chatId,
@@ -173,6 +183,7 @@ exports.sendMessage = catchAsync(async (req, res, next) => {
     isRead: false,
   });
 
+  // Populate sender details
   await message.populate("sender", "firstName lastName");
 
   // Update chat's lastMessage and increment unreadCount for other members
@@ -189,6 +200,13 @@ exports.sendMessage = catchAsync(async (req, res, next) => {
   });
   await chat.save();
 
+  // Trigger Pusher events
+  pusher.trigger("chats", "message-sent", { chatId: chatId.toString() });
+  pusher.trigger(`chat-${chatId}`, "new-message", {
+    messageId: message._id.toString(),
+  });
+
+  // Send response
   res.status(201).json({
     status: "success",
     message: "Message sent successfully",
