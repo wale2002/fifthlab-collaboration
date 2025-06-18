@@ -1,66 +1,18 @@
-// backend/controllers/messageController.js
 const Message = require("../models/messageModel");
 const Chat = require("../models/chatModel");
 const User = require("../models/userModel");
 const catchAsync = require("../utils/catchAsync");
 const AppError = require("../utils/appError");
-const pusher = require("../pusher");
+const Pusher = require("pusher");
 
-// exports.createChat = catchAsync(async (req, res, next) => {
-//   const { recipients, isGroupChat, groupName } = req.body;
-//   const currentUser = req.user;
-
-//   // Validate recipients
-//   if (!recipients || !Array.isArray(recipients) || recipients.length === 0) {
-//     return next(new AppError("At least one recipient is required", 400));
-//   }
-
-//   // Validate recipient users
-//   const recipientUsers = await User.find({ _id: { $in: recipients } });
-//   if (recipientUsers.length !== recipients.length) {
-//     return next(new AppError("One or more recipients not found", 404));
-//   }
-
-//   // Include current user in members
-//   const members = [
-//     { user: currentUser._id, unreadCount: 0 },
-//     ...recipientUsers.map((u) => ({ user: u._id, unreadCount: 0 })),
-//   ];
-
-//   // Prepare chat data
-//   const chatData = {
-//     isGroupChat,
-//     members,
-//     ...(isGroupChat &&
-//       groupName && { groupName, groupAdmin: [currentUser._id] }),
-//   };
-
-//   // Create chat
-//   const chat = await Chat.create(chatData);
-//   await chat.populate("members.user", "firstName lastName");
-
-//   // Trigger Pusher event
-//   pusher.trigger("chats", "new-chat", { chatId: chat._id.toString() });
-
-//   // Send response
-//   res.status(201).json({
-//     success: true,
-//     data: {
-//       id: chat._id.toString(),
-//       isGroupChat: chat.isGroupChat,
-//       groupName: chat.groupName,
-//       members: chat.members.map((m) => ({
-//         userId: m.user._id.toString(),
-//         name: `${m.user.firstName} ${m.user.lastName}`,
-//         unreadCount: m.unreadCount,
-//       })),
-//       lastMessage: null,
-//       createdAt: chat.createdAt,
-//       updatedAt: chat.updatedAt,
-//     },
-//   });
-// });
-// C:\Users\gemre\Desktop\msg\appfolder\controllers\chatController.js
+// Initialize Pusher with .env variables
+const pusher = new Pusher({
+  appId: process.env.PUSHER_APP_ID || "2009889",
+  key: process.env.PUSHER_KEY || "836f3176a2c384401b6a",
+  secret: process.env.PUSHER_SECRET || "3cb40dbdca917a3ce057",
+  cluster: process.env.PUSHER_CLUSTER || "mt1",
+  useTLS: true,
+});
 
 exports.createChat = catchAsync(async (req, res, next) => {
   console.log("createChat Request Body:", req.body);
@@ -174,7 +126,7 @@ exports.getChats = catchAsync(async (req, res, next) => {
             timestamp: chat.lastMessage.createdAt,
           }
         : null,
-      createdAt: chat.createdAt, // Ensure this is included
+      createdAt: chat.createdAt,
     })),
   });
 });
@@ -185,7 +137,6 @@ exports.getMessages = catchAsync(async (req, res, next) => {
     return next(new AppError("Chat ID is required", 400));
   }
 
-  // Verify user is part of the chat
   const chat = await Chat.findOne({
     _id: chatId,
     members: { $elemMatch: { user: req.user._id } },
@@ -233,12 +184,10 @@ exports.getMessages = catchAsync(async (req, res, next) => {
 exports.sendMessage = catchAsync(async (req, res, next) => {
   const { chatId, content, photo } = req.body;
 
-  // Validate input
   if (!chatId || (!content && !photo)) {
     return next(new AppError("Chat ID and content or photo are required", 400));
   }
 
-  // Verify user is part of the chat
   const chat = await Chat.findOne({
     _id: chatId,
     members: { $elemMatch: { user: req.user._id } },
@@ -247,7 +196,6 @@ exports.sendMessage = catchAsync(async (req, res, next) => {
     return next(new AppError("Chat not found or you are not a member", 404));
   }
 
-  // Create message
   const message = await Message.create({
     sender: req.user._id,
     chat: chatId,
@@ -256,10 +204,8 @@ exports.sendMessage = catchAsync(async (req, res, next) => {
     isRead: false,
   });
 
-  // Populate sender details
   await message.populate("sender", "firstName lastName");
 
-  // Update chat's lastMessage and increment unreadCount for other members
   chat.lastMessage = {
     _id: message._id,
     content: message.content,
@@ -273,32 +219,29 @@ exports.sendMessage = catchAsync(async (req, res, next) => {
   });
   await chat.save();
 
-  // Trigger Pusher events
-  pusher.trigger("chats", "message-sent", { chatId: chatId.toString() });
-  pusher.trigger(`chat-${chatId}`, "new-message", {
-    messageId: message._id.toString(),
-  });
+  const messagePayload = {
+    id: message._id.toString(),
+    sender: message.sender._id.toString(),
+    senderName: `${message.sender.firstName} ${message.sender.lastName}`,
+    content: message.content,
+    photo: message.photo,
+    timestamp: message.createdAt,
+    isRead: message.isRead,
+  };
 
-  // Send response
+  pusher.trigger("chats", "message-sent", { chatId: chatId.toString() });
+  pusher.trigger(`chat-${chatId}`, "new-message", messagePayload);
+
   res.status(201).json({
     status: "success",
     message: "Message sent successfully",
-    data: {
-      id: message._id.toString(),
-      sender: message.sender._id.toString(),
-      senderName: `${message.sender.firstName} ${message.sender.lastName}`,
-      content: message.content,
-      photo: message.photo,
-      timestamp: message.createdAt,
-      isRead: message.isRead,
-    },
+    data: messagePayload,
   });
 });
 
 exports.markAsRead = catchAsync(async (req, res, next) => {
   const { chatId } = req.params;
 
-  // Verify user is part of the chat
   const chat = await Chat.findOne({
     _id: chatId,
     members: { $elemMatch: { user: req.user._id } },
@@ -307,10 +250,8 @@ exports.markAsRead = catchAsync(async (req, res, next) => {
     return next(new AppError("Chat not found or you are not a member", 404));
   }
 
-  // Mark all messages in the chat as read for the user
   await Message.updateMany({ chat: chatId, isRead: false }, { isRead: true });
 
-  // Reset unreadCount for the user
   chat.members = chat.members.map((member) => {
     if (member.user.toString() === req.user._id.toString()) {
       member.unreadCount = 0;

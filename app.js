@@ -18,10 +18,7 @@ const app = express();
 const allowedOrigins = [
   process.env.FRONTEND_URL || "https://fifthlab-collaboration.onrender.com",
   "http://localhost:3000",
-  "http://localhost:5173",
-  "https://fifths.netlify.app",
-  "https://fise.netlify.app",
-  "https://fiftth.netlify.app",
+  "http://localhost:3000/",
 ];
 
 app.use(
