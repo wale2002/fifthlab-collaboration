@@ -6,59 +6,132 @@ const catchAsync = require("../utils/catchAsync");
 const AppError = require("../utils/appError");
 const pusher = require("../pusher");
 
+// exports.createChat = catchAsync(async (req, res, next) => {
+//   const { recipients, isGroupChat, groupName } = req.body;
+//   const currentUser = req.user;
+
+//   // Validate recipients
+//   if (!recipients || !Array.isArray(recipients) || recipients.length === 0) {
+//     return next(new AppError("At least one recipient is required", 400));
+//   }
+
+//   // Validate recipient users
+//   const recipientUsers = await User.find({ _id: { $in: recipients } });
+//   if (recipientUsers.length !== recipients.length) {
+//     return next(new AppError("One or more recipients not found", 404));
+//   }
+
+//   // Include current user in members
+//   const members = [
+//     { user: currentUser._id, unreadCount: 0 },
+//     ...recipientUsers.map((u) => ({ user: u._id, unreadCount: 0 })),
+//   ];
+
+//   // Prepare chat data
+//   const chatData = {
+//     isGroupChat,
+//     members,
+//     ...(isGroupChat &&
+//       groupName && { groupName, groupAdmin: [currentUser._id] }),
+//   };
+
+//   // Create chat
+//   const chat = await Chat.create(chatData);
+//   await chat.populate("members.user", "firstName lastName");
+
+//   // Trigger Pusher event
+//   pusher.trigger("chats", "new-chat", { chatId: chat._id.toString() });
+
+//   // Send response
+//   res.status(201).json({
+//     success: true,
+//     data: {
+//       id: chat._id.toString(),
+//       isGroupChat: chat.isGroupChat,
+//       groupName: chat.groupName,
+//       members: chat.members.map((m) => ({
+//         userId: m.user._id.toString(),
+//         name: `${m.user.firstName} ${m.user.lastName}`,
+//         unreadCount: m.unreadCount,
+//       })),
+//       lastMessage: null,
+//       createdAt: chat.createdAt,
+//       updatedAt: chat.updatedAt,
+//     },
+//   });
+// });
+// C:\Users\gemre\Desktop\msg\appfolder\controllers\chatController.js
+
 exports.createChat = catchAsync(async (req, res, next) => {
+  console.log("createChat Request Body:", req.body);
+  console.log("Current User:", req.user);
   const { recipients, isGroupChat, groupName } = req.body;
   const currentUser = req.user;
 
-  // Validate recipients
+  if (!currentUser) {
+    console.error("No authenticated user found");
+    return next(new AppError("User not authenticated", 401));
+  }
+
   if (!recipients || !Array.isArray(recipients) || recipients.length === 0) {
+    console.error("Invalid recipients:", recipients);
     return next(new AppError("At least one recipient is required", 400));
   }
 
-  // Validate recipient users
-  const recipientUsers = await User.find({ _id: { $in: recipients } });
-  if (recipientUsers.length !== recipients.length) {
-    return next(new AppError("One or more recipients not found", 404));
+  try {
+    const recipientUsers = await User.find({ _id: { $in: recipients } });
+    console.log(
+      "Found Recipients:",
+      recipientUsers.map((u) => u._id.toString())
+    );
+    if (recipientUsers.length !== recipients.length) {
+      console.error("Some recipients not found:", recipients);
+      return next(new AppError("One or more recipients not found", 404));
+    }
+
+    const members = [
+      { user: currentUser._id, unreadCount: 0 },
+      ...recipientUsers.map((u) => ({ user: u._id, unreadCount: 0 })),
+    ];
+
+    const chatData = {
+      isGroupChat,
+      members,
+      ...(isGroupChat &&
+        groupName && { groupName, groupAdmin: [currentUser._id] }),
+    };
+
+    console.log("Chat Data:", chatData);
+    const chat = await Chat.create(chatData);
+    await chat.populate("members.user", "firstName lastName accountName email");
+    console.log("Created Chat:", chat);
+
+    pusher.trigger("chats", "new-chat", { chatId: chat._id.toString() });
+
+    res.status(201).json({
+      success: true,
+      data: {
+        id: chat._id.toString(),
+        isGroupChat: chat.isGroupChat,
+        groupName: chat.groupName,
+        members: chat.members.map((m) => ({
+          userId: m.user._id.toString(),
+          name:
+            m.user.accountName ||
+            `${m.user.firstName} ${m.user.lastName || ""}`.trim(),
+          email: m.user.email,
+          unreadCount: m.unreadCount,
+        })),
+        lastMessage: null,
+        createdAt: chat.createdAt,
+        updatedAt: chat.updatedAt,
+      },
+      message: "Chat created successfully",
+    });
+  } catch (error) {
+    console.error("createChat Error:", error);
+    return next(new AppError(`Failed to create chat: ${error.message}`, 500));
   }
-
-  // Include current user in members
-  const members = [
-    { user: currentUser._id, unreadCount: 0 },
-    ...recipientUsers.map((u) => ({ user: u._id, unreadCount: 0 })),
-  ];
-
-  // Prepare chat data
-  const chatData = {
-    isGroupChat,
-    members,
-    ...(isGroupChat &&
-      groupName && { groupName, groupAdmin: [currentUser._id] }),
-  };
-
-  // Create chat
-  const chat = await Chat.create(chatData);
-  await chat.populate("members.user", "firstName lastName");
-
-  // Trigger Pusher event
-  pusher.trigger("chats", "new-chat", { chatId: chat._id.toString() });
-
-  // Send response
-  res.status(201).json({
-    success: true,
-    data: {
-      id: chat._id.toString(),
-      isGroupChat: chat.isGroupChat,
-      groupName: chat.groupName,
-      members: chat.members.map((m) => ({
-        userId: m.user._id.toString(),
-        name: `${m.user.firstName} ${m.user.lastName}`,
-        unreadCount: m.unreadCount,
-      })),
-      lastMessage: null,
-      createdAt: chat.createdAt,
-      updatedAt: chat.updatedAt,
-    },
-  });
 });
 
 exports.getChats = catchAsync(async (req, res, next) => {
