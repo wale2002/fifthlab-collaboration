@@ -7,8 +7,8 @@ const router = express.Router();
 
 // Public routes
 router.post("/signup", authController.signup); // Fix: Remove parentheses
-router.post("/login", authController.login);
 router.get("/logout", authController.logout);
+router.post("/login", authController.login);
 router.post("/forgotPassword", authController.forgotPassword);
 router.patch("/resetPassword/:token", authController.resetPassword);
 
