@@ -93,6 +93,7 @@ exports.getChats = catchAsync(async (req, res, next) => {
             timestamp: chat.lastMessage.createdAt,
           }
         : null,
+      createdAt: chat.createdAt, // Ensure this is included
     })),
   });
 });
