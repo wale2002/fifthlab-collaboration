@@ -15,74 +15,39 @@ const pusher = new Pusher({
 });
 
 exports.createChat = catchAsync(async (req, res, next) => {
-  console.log("createChat Request Body:", req.body);
-  console.log("Current User:", req.user);
-  const { recipients, isGroupChat, groupName } = req.body;
-  const currentUser = req.user;
-
-  if (!currentUser) {
-    console.error("No authenticated user found");
-    return next(new AppError("User not authenticated", 401));
-  }
-
-  if (!recipients || !Array.isArray(recipients) || recipients.length === 0) {
-    console.error("Invalid recipients:", recipients);
-    return next(new AppError("At least one recipient is required", 400));
-  }
-
   try {
-    const recipientUsers = await User.find({ _id: { $in: recipients } });
-    console.log(
-      "Found Recipients:",
-      recipientUsers.map((u) => u._id.toString())
-    );
-    if (recipientUsers.length !== recipients.length) {
-      console.error("Some recipients not found:", recipients);
-      return next(new AppError("One or more recipients not found", 404));
-    }
-
-    const members = [
-      { user: currentUser._id, unreadCount: 0 },
-      ...recipientUsers.map((u) => ({ user: u._id, unreadCount: 0 })),
-    ];
-
+    const { recipients, isGroupChat, groupName } = req.body;
+    const currentUser = req.user; // Assuming middleware sets req.user
     const chatData = {
       isGroupChat,
-      members,
-      ...(isGroupChat &&
-        groupName && { groupName, groupAdmin: [currentUser._id] }),
+      members: [
+        { user: currentUser._id, unreadCount: 0 },
+        ...recipients.map((id) => ({ user: id, unreadCount: 0 })),
+      ],
+      groupName: isGroupChat ? groupName : undefined,
     };
-
-    console.log("Chat Data:", chatData);
     const chat = await Chat.create(chatData);
-    await chat.populate("members.user", "firstName lastName accountName email");
-    console.log("Created Chat:", chat);
 
-    pusher.trigger("chats", "new-chat", { chatId: chat._id.toString() });
+    // Emit Pusher event
+    pusher.trigger("chats", "new-chat", {
+      id: chat._id,
+      isGroupChat: chat.isGroupChat,
+      groupName: chat.groupName,
+      members: chat.members.map((m) => ({
+        userId: m.user._id,
+        name: m.user.accountName || `${m.user.firstName} ${m.user.lastName}`,
+        unreadCount: m.unreadCount,
+      })),
+      createdAt: chat.createdAt,
+    });
 
     res.status(201).json({
       success: true,
-      data: {
-        id: chat._id.toString(),
-        isGroupChat: chat.isGroupChat,
-        groupName: chat.groupName,
-        members: chat.members.map((m) => ({
-          userId: m.user._id.toString(),
-          name:
-            m.user.accountName ||
-            `${m.user.firstName} ${m.user.lastName || ""}`.trim(),
-          email: m.user.email,
-          unreadCount: m.unreadCount,
-        })),
-        lastMessage: null,
-        createdAt: chat.createdAt,
-        updatedAt: chat.updatedAt,
-      },
+      data: chat,
       message: "Chat created successfully",
     });
   } catch (error) {
-    console.error("createChat Error:", error);
-    return next(new AppError(`Failed to create chat: ${error.message}`, 500));
+    res.status(500).json({ success: false, message: error.message });
   }
 });
 
