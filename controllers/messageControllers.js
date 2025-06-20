@@ -15,40 +15,89 @@ const pusher = new Pusher({
 });
 
 exports.createChat = catchAsync(async (req, res, next) => {
-  try {
-    const { recipients, isGroupChat, groupName } = req.body;
-    const currentUser = req.user; // Assuming middleware sets req.user
-    const chatData = {
-      isGroupChat,
-      members: [
-        { user: currentUser._id, unreadCount: 0 },
-        ...recipients.map((id) => ({ user: id, unreadCount: 0 })),
-      ],
-      groupName: isGroupChat ? groupName : undefined,
-    };
-    const chat = await Chat.create(chatData);
+  const { recipients, isGroupChat, groupName } = req.body;
+  const currentUser = req.user;
 
-    // Emit Pusher event
-    pusher.trigger("chats", "new-chat", {
-      id: chat._id,
-      isGroupChat: chat.isGroupChat,
-      groupName: chat.groupName,
-      members: chat.members.map((m) => ({
-        userId: m.user._id,
-        name: m.user.accountName || `${m.user.firstName} ${m.user.lastName}`,
-        unreadCount: m.unreadCount,
-      })),
-      createdAt: chat.createdAt,
-    });
-
-    res.status(201).json({
-      success: true,
-      data: chat,
-      message: "Chat created successfully",
-    });
-  } catch (error) {
-    res.status(500).json({ success: false, message: error.message });
+  // Validate recipients
+  if (!Array.isArray(recipients) || recipients.length === 0) {
+    return next(new AppError("Recipients must be a non-empty array.", 400));
   }
+
+  // Validate recipient IDs
+  const validRecipients = await User.find({ _id: { $in: recipients } }).select(
+    "_id"
+  );
+  if (validRecipients.length !== recipients.length) {
+    return next(new AppError("One or more recipient IDs are invalid.", 400));
+  }
+
+  // Check for duplicate one-on-one chat
+  if (!isGroupChat && recipients.length === 1) {
+    const existingChat = await Chat.findOne({
+      isGroupChat: false,
+      members: {
+        $all: [{ user: currentUser._id }, { user: recipients[0] }],
+        $size: 2,
+      },
+    }).populate("members.user");
+    if (existingChat) {
+      pusher.trigger("chats", "new-chat", {
+        id: existingChat._id.toString(),
+        isGroupChat: existingChat.isGroupChat,
+        groupName: existingChat.groupName,
+        members: existingChat.members.map((m) => ({
+          userId: m.user._id.toString(),
+          name: m.user.accountName || `${m.user.firstName} ${m.user.lastName}`,
+          unreadCount: m.unreadCount,
+        })),
+        createdAt: existingChat.createdAt,
+      });
+      return res.status(200).json({
+        success: true,
+        data: existingChat._id.toString(),
+        message: "Existing chat found",
+      });
+    }
+  }
+
+  // Validate groupName for group chats
+  if (
+    isGroupChat &&
+    (!groupName || typeof groupName !== "string" || groupName.trim() === "")
+  ) {
+    return next(new AppError("Group name is required for group chats.", 400));
+  }
+
+  const chatData = {
+    isGroupChat: Boolean(isGroupChat),
+    members: [
+      { user: currentUser._id, unreadCount: 0 },
+      ...recipients.map((id) => ({ user: id, unreadCount: 0 })),
+    ],
+    groupName: isGroupChat ? groupName : undefined,
+    groupAdmin: isGroupChat ? [currentUser._id] : undefined,
+  };
+
+  const chat = await Chat.create(chatData);
+  await chat.populate("members.user");
+
+  pusher.trigger("chats", "new-chat", {
+    id: chat._id.toString(),
+    isGroupChat: chat.isGroupChat,
+    groupName: chat.groupName,
+    members: chat.members.map((m) => ({
+      userId: m.user._id.toString(),
+      name: m.user.accountName || `${m.user.firstName} ${m.user.lastName}`,
+      unreadCount: m.unreadCount,
+    })),
+    createdAt: chat.createdAt,
+  });
+
+  res.status(201).json({
+    success: true,
+    data: chat,
+    message: "Chat created successfully",
+  });
 });
 
 exports.getChats = catchAsync(async (req, res, next) => {

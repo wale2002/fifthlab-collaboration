@@ -21,7 +21,7 @@ mongoose
 // Create HTTP server with the Express app
 
 // Listen on the PORT defined by environment or fallback to 3000
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 4000;
 app.listen(PORT, () => {
   console.log(`🚀 Server running on the port ${PORT}...`);
 });
