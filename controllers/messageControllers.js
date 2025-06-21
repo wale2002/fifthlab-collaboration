@@ -100,50 +100,108 @@ exports.createChat = catchAsync(async (req, res, next) => {
   });
 });
 
-exports.getChats = catchAsync(async (req, res, next) => {
-  const { search } = req.query;
-  let chats = await Chat.find({ "members.user": req.user.id }).populate(
-    "members.user",
-    "firstName lastName"
-  );
+// exports.getChats = catchAsync(async (req, res, next) => {
+//   const { search } = req.query;
+//   let chats = await Chat.find({ "members.user": req.user.id }).populate(
+//     "members.user",
+//     "firstName lastName"
+//   );
 
-  if (search && typeof search === "string") {
-    chats = chats.filter((chat) =>
-      chat.isGroupChat
-        ? chat.groupName?.toLowerCase().includes(search.toLowerCase())
-        : chat.members.some(
-            (m) =>
-              m.user._id.toString() !== req.user.id &&
-              `${m.user.firstName} ${m.user.lastName}`
-                .toLowerCase()
-                .includes(search.toLowerCase())
-          )
-    );
+//   if (search && typeof search === "string") {
+//     chats = chats.filter((chat) =>
+//       chat.isGroupChat
+//         ? chat.groupName?.toLowerCase().includes(search.toLowerCase())
+//         : chat.members.some(
+//             (m) =>
+//               m.user._id.toString() !== req.user.id &&
+//               `${m.user.firstName} ${m.user.lastName}`
+//                 .toLowerCase()
+//                 .includes(search.toLowerCase())
+//           )
+//     );
+//   }
+
+//   res.status(200).json({
+//     success: true,
+//     data: chats.map((chat) => ({
+//       id: chat._id.toString(),
+//       isGroupChat: chat.isGroupChat,
+//       groupName: chat.groupName,
+//       members: chat.members.map((m) => ({
+//         userId: m.user._id.toString(),
+//         name: `${m.user.firstName} ${m.user.lastName}`,
+//         unreadCount: m.unreadCount,
+//       })),
+//       lastMessage: chat.lastMessage
+//         ? {
+//             id: chat.lastMessage._id,
+//             content: chat.lastMessage.content,
+//             photo: chat.lastMessage.photo,
+//             timestamp: chat.lastMessage.createdAt,
+//           }
+//         : null,
+//       createdAt: chat.createdAt,
+//     })),
+//   });
+// });
+exports.getChats = async (req, res, next) => {
+  try {
+    const chats = await Chat.find({
+      members: { $elemMatch: { user: req.user._id } },
+    }).populate("members.user", "firstName lastName");
+
+    const transformedChats = chats
+      .map((chat) => {
+        const baseChat = {
+          id: chat._id.toString(),
+          _id: chat._id,
+          isGroupChat: chat.isGroupChat,
+          groupName: chat.groupName,
+          lastMessage: chat.lastMessage
+            ? {
+                content: chat.lastMessage.content,
+                timestamp: chat.lastMessage.createdAt,
+                isRead: chat.lastMessage.isRead || false,
+              }
+            : null,
+          createdAt: chat.createdAt,
+          groupAdmin: chat.groupAdmin || [],
+        };
+
+        if (!chat.isGroupChat) {
+          const otherMember = chat.members.find(
+            (member) => member.user._id.toString() !== req.user._id.toString()
+          );
+          if (!otherMember) return null;
+          return {
+            ...baseChat,
+            member: {
+              userId: otherMember.user._id.toString(),
+              name: `${otherMember.user.firstName} ${otherMember.user.lastName}`,
+              unreadCount: otherMember.unreadCount || 0,
+            },
+          };
+        }
+
+        return {
+          ...baseChat,
+          members: chat.members.map((member) => ({
+            userId: member.user._id.toString(),
+            name: `${member.user.firstName} ${member.user.lastName}`,
+            unreadCount: member.unreadCount || 0,
+          })),
+        };
+      })
+      .filter(Boolean);
+
+    res.status(200).json({
+      success: true,
+      data: transformedChats,
+    });
+  } catch (error) {
+    next(new AppError("Failed to fetch chats", 500));
   }
-
-  res.status(200).json({
-    success: true,
-    data: chats.map((chat) => ({
-      id: chat._id.toString(),
-      isGroupChat: chat.isGroupChat,
-      groupName: chat.groupName,
-      members: chat.members.map((m) => ({
-        userId: m.user._id.toString(),
-        name: `${m.user.firstName} ${m.user.lastName}`,
-        unreadCount: m.unreadCount,
-      })),
-      lastMessage: chat.lastMessage
-        ? {
-            id: chat.lastMessage._id,
-            content: chat.lastMessage.content,
-            photo: chat.lastMessage.photo,
-            timestamp: chat.lastMessage.createdAt,
-          }
-        : null,
-      createdAt: chat.createdAt,
-    })),
-  });
-});
+};
 
 exports.getMessages = catchAsync(async (req, res, next) => {
   const { chatId, filter, page = 1, limit = 20 } = req.query;
