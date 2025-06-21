@@ -107,14 +107,24 @@ exports.getChats = catchAsync(async (req, res, next) => {
     "firstName lastName"
   );
 
+  // Log for debugging
+  console.log("Fetched chats:", chats.length);
+  chats.forEach((chat, index) => {
+    console.log(
+      `Chat ${index} members:`,
+      JSON.stringify(chat.members, null, 2)
+    );
+  });
+
   if (search && typeof search === "string") {
     chats = chats.filter((chat) =>
       chat.isGroupChat
         ? chat.groupName?.toLowerCase().includes(search.toLowerCase())
         : chat.members.some(
             (m) =>
+              m.user && // Check if m.user exists
               m.user._id.toString() !== req.user.id &&
-              `${m.user.firstName} ${m.user.lastName}`
+              `${m.user.firstName || ""} ${m.user.lastName || ""}`
                 .toLowerCase()
                 .includes(search.toLowerCase())
           )
@@ -128,16 +138,19 @@ exports.getChats = catchAsync(async (req, res, next) => {
       isGroupChat: chat.isGroupChat,
       groupName: chat.groupName,
       members: chat.members.map((m) => ({
-        userId: m.user._id.toString(),
-        name: `${m.user.firstName} ${m.user.lastName}`,
-        unreadCount: m.unreadCount,
+        userId: m.user?._id?.toString() || "unknown",
+        name: m.user
+          ? `${m.user.firstName || ""} ${m.user.lastName || ""}`.trim() ||
+            "Unknown User"
+          : "Unknown User",
+        unreadCount: m.unreadCount || 0,
       })),
       lastMessage: chat.lastMessage
         ? {
-            id: chat.lastMessage._id,
-            content: chat.lastMessage.content,
-            photo: chat.lastMessage.photo,
-            timestamp: chat.lastMessage.createdAt,
+            id: chat.lastMessage._id?.toString() || "unknown",
+            content: chat.lastMessage.content || "",
+            photo: chat.lastMessage.photo || "",
+            timestamp: chat.lastMessage.createdAt || null,
           }
         : null,
       createdAt: chat.createdAt,
@@ -147,14 +160,30 @@ exports.getChats = catchAsync(async (req, res, next) => {
 
 exports.getMessages = catchAsync(async (req, res, next) => {
   const { chatId, filter, page = 1, limit = 20 } = req.query;
+
+  // Validate chatId
   if (!chatId) {
     return next(new AppError("Chat ID is required", 400));
   }
+  if (!mongoose.isValidObjectId(chatId)) {
+    return next(new AppError("Invalid Chat ID format", 400));
+  }
+
+  // Validate req.user
+  if (!req.user || !req.user._id) {
+    return next(new AppError("User not authenticated", 401));
+  }
+
+  // Log for debugging
+  console.log(
+    `Fetching messages for chatId: ${chatId}, userId: ${req.user._id}`
+  );
 
   const chat = await Chat.findOne({
     _id: chatId,
     members: { $elemMatch: { user: req.user._id } },
   }).populate("members.user", "firstName lastName");
+
   if (!chat) {
     return next(new AppError("Chat not found or you are not a member", 404));
   }
@@ -177,15 +206,22 @@ exports.getMessages = catchAsync(async (req, res, next) => {
         isGroupChat: chat.isGroupChat,
         groupName: chat.groupName,
         members: chat.members.map((m) => ({
-          userId: m.user._id.toString(),
-          name: `${m.user.firstName} ${m.user.lastName}`,
+          userId: m.user ? m.user._id.toString() : "unknown",
+          name: m.user
+            ? `${m.user.firstName || ""} ${m.user.lastName || ""}`.trim() ||
+              "Unknown User"
+            : "Unknown User",
           unreadCount: m.unreadCount,
         })),
       },
       messages: messages.map((msg) => ({
         id: msg._id.toString(),
-        sender: msg.sender._id.toString(),
-        senderName: `${msg.sender.firstName} ${msg.sender.lastName}`,
+        sender: msg.sender ? msg.sender._id.toString() : "unknown",
+        senderName: msg.sender
+          ? `${msg.sender.firstName || ""} ${
+              msg.sender.lastName || ""
+            }`.trim() || "Unknown User"
+          : "Unknown User",
         content: msg.content,
         photo: msg.photo,
         timestamp: msg.createdAt,
@@ -198,9 +234,21 @@ exports.getMessages = catchAsync(async (req, res, next) => {
 exports.sendMessage = catchAsync(async (req, res, next) => {
   const { chatId, content, photo } = req.body;
 
+  // Validate inputs
   if (!chatId || (!content && !photo)) {
     return next(new AppError("Chat ID and content or photo are required", 400));
   }
+  if (!mongoose.isValidObjectId(chatId)) {
+    return next(new AppError("Invalid Chat ID format", 400));
+  }
+
+  // Validate req.user
+  if (!req.user || !req.user._id) {
+    return next(new AppError("User not authenticated", 401));
+  }
+
+  // Log for debugging
+  console.log(`Sending message for chatId: ${chatId}, userId: ${req.user._id}`);
 
   const chat = await Chat.findOne({
     _id: chatId,
@@ -227,7 +275,7 @@ exports.sendMessage = catchAsync(async (req, res, next) => {
     createdAt: message.createdAt,
   };
   chat.members.forEach((member) => {
-    if (member.user.toString() !== req.user._id.toString()) {
+    if (member.user && member.user.toString() !== req.user._id.toString()) {
       member.unreadCount += 1;
     }
   });
@@ -235,8 +283,12 @@ exports.sendMessage = catchAsync(async (req, res, next) => {
 
   const messagePayload = {
     id: message._id.toString(),
-    sender: message.sender._id.toString(),
-    senderName: `${message.sender.firstName} ${message.sender.lastName}`,
+    sender: message.sender ? message.sender._id.toString() : "unknown",
+    senderName: message.sender
+      ? `${message.sender.firstName || ""} ${
+          message.sender.lastName || ""
+        }`.trim() || "Unknown User"
+      : "Unknown User",
     content: message.content,
     photo: message.photo,
     timestamp: message.createdAt,
@@ -256,6 +308,21 @@ exports.sendMessage = catchAsync(async (req, res, next) => {
 exports.markAsRead = catchAsync(async (req, res, next) => {
   const { chatId } = req.params;
 
+  // Validate chatId
+  if (!mongoose_desktop.isValidObjectId(chatId)) {
+    return next(new AppError("Invalid Chat ID format", 400));
+  }
+
+  // Validate req.user
+  if (!req.user || !req.user._id) {
+    return next(new AppError("User not authenticated", 401));
+  }
+
+  // Log for debugging
+  console.log(
+    `Marking messages as read for chatId: ${chatId}, userId: ${req.user._id}`
+  );
+
   const chat = await Chat.findOne({
     _id: chatId,
     members: { $elemMatch: { user: req.user._id } },
@@ -267,7 +334,7 @@ exports.markAsRead = catchAsync(async (req, res, next) => {
   await Message.updateMany({ chat: chatId, isRead: false }, { isRead: true });
 
   chat.members = chat.members.map((member) => {
-    if (member.user.toString() === req.user._id.toString()) {
+    if (member.user && member.user.toString() === req.user._id.toString()) {
       member.unreadCount = 0;
     }
     return member;

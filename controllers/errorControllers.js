@@ -42,18 +42,37 @@ const sendErrorDev = (err, req, res) => {
 const sendErrorProd = (err, req, res) => {
   // Operational: trusted error
   if (err.isOperational) {
-    res.status(err.statusCode).json({
+    return res.status(err.statusCode).json({
       status: err.status,
       message: err.message,
     });
-  } else {
-    // Programming or unknown error
-    console.error("ERROR 💥", err);
-    res.status(500).json({
-      status: "error",
-      message: "Something went wrong!",
-    });
   }
+
+  // Programming or unknown error
+  console.error("ERROR 💥", {
+    name: err.name,
+    message: err.message,
+    stack: err.stack,
+    url: req.originalUrl,
+    method: req.method,
+    user: req.user?._id || "Unauthenticated",
+  });
+
+  // Include detailed error info only if DEBUG_ERRORS is enabled
+  const errorResponse = {
+    status: "error",
+    message: "Something went wrong!",
+  };
+
+  if (process.env.DEBUG_ERRORS === "true") {
+    errorResponse.errorDetails = {
+      name: err.name,
+      message: err.message,
+      stack: err.stack.split("\n").slice(0, 5).join("\n"), // Limit stack trace
+    };
+  }
+
+  res.status(500).json(errorResponse);
 };
 
 module.exports = (err, req, res, next) => {
