@@ -35,6 +35,8 @@
     "newman": "^6.2.1",
     "nodemailer": "^7.0.3",
     "path": "^0.12.7",
+    "pino": "^9.7.0",
+    "pino-pretty": "^13.0.0",
     "pug": "^3.0.3",
     "pusher": "^5.2.0",
     "pusher-js": "^8.4.0",
