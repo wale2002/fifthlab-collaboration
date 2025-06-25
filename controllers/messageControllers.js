@@ -561,71 +561,100 @@ exports.createChat = catchAsync(async (req, res, next) => {
     message: "Chat created successfully",
   });
 });
-
 exports.getChats = catchAsync(async (req, res, next) => {
-  const { search } = req.query;
-  logger.info({ userId: req.user._id.toString(), search }, "Fetching chats");
-
-  let chats = await Chat.find({ "members.user": req.user._id }).populate(
-    "members.user",
-    "firstName lastName accountName"
-  );
-
-  logger.info({ chatCount: chats.length }, "Chats retrieved from database");
-
-  chats.forEach((chat, index) => {
-    logger.debug(
-      { chatId: chat._id.toString(), members: chat.members },
-      `Chat ${index} members`
-    );
-  });
-
-  if (search && typeof search === "string") {
-    chats = chats.filter((chat) =>
-      chat.isGroupChat
-        ? chat.groupName?.toLowerCase().includes(search.toLowerCase())
-        : chat.members.some(
-            (m) =>
-              m.user &&
-              m.user._id.toString() !== req.user._id.toString() &&
-              `${m.user.firstName || ""} ${m.user.lastName || ""}`
-                .toLowerCase()
-                .includes(search.toLowerCase())
-          )
-    );
-    logger.info(
-      { search, filteredCount: chats.length },
-      "Chats filtered by search"
-    );
-  }
+  const chats = await Chat.find({
+    "members.user": req.user._id,
+  }).lean();
 
   res.status(200).json({
-    success: true,
+    status: "success",
     data: chats.map((chat) => ({
       id: chat._id.toString(),
       isGroupChat: chat.isGroupChat,
       groupName: chat.groupName,
       members: chat.members.map((m) => ({
-        userId: m.user?._id?.toString() || "unknown",
-        name: m.user
-          ? m.user.accountName ||
-            `${m.user.firstName || ""} ${m.user.lastName || ""}`.trim() ||
-            "Unknown User"
-          : "Unknown User",
-        unreadCount: m.unreadCount || 0,
+        userId: m.user._id.toString(),
+        name: m.user.accountName || `${m.user.firstName} ${m.user.lastName}`,
+        unreadCount: m.unreadCount,
       })),
       lastMessage: chat.lastMessage
         ? {
-            id: chat.lastMessage._id?.toString() || "unknown",
-            content: chat.lastMessage.content || "",
-            photo: chat.lastMessage.photo || "",
-            timestamp: chat.lastMessage.createdAt || null,
+            content: chat.lastMessage.content,
+            preview: chat.lastMessage.preview,
+            timestamp: chat.lastMessage.timestamp.toISOString(),
+            isRead: chat.lastMessage.isRead,
           }
         : null,
-      createdAt: chat.createdAt,
+      createdAt: chat.createdAt.toISOString(),
+      groupAdmin: chat.groupAdmin.map((admin) => admin._id.toString()),
     })),
   });
 });
+
+// exports.getChats = catchAsync(async (req, res, next) => {
+//   const { search } = req.query;
+//   logger.info({ userId: req.user._id.toString(), search }, "Fetching chats");
+
+//   let chats = await Chat.find({ "members.user": req.user._id }).populate(
+//     "members.user",
+//     "firstName lastName accountName"
+//   );
+
+//   logger.info({ chatCount: chats.length }, "Chats retrieved from database");
+
+//   chats.forEach((chat, index) => {
+//     logger.debug(
+//       { chatId: chat._id.toString(), members: chat.members },
+//       `Chat ${index} members`
+//     );
+//   });
+
+//   if (search && typeof search === "string") {
+//     chats = chats.filter((chat) =>
+//       chat.isGroupChat
+//         ? chat.groupName?.toLowerCase().includes(search.toLowerCase())
+//         : chat.members.some(
+//             (m) =>
+//               m.user &&
+//               m.user._id.toString() !== req.user._id.toString() &&
+//               `${m.user.firstName || ""} ${m.user.lastName || ""}`
+//                 .toLowerCase()
+//                 .includes(search.toLowerCase())
+//           )
+//     );
+//     logger.info(
+//       { search, filteredCount: chats.length },
+//       "Chats filtered by search"
+//     );
+//   }
+
+//   res.status(200).json({
+//     success: true,
+//     data: chats.map((chat) => ({
+//       id: chat._id.toString(),
+//       isGroupChat: chat.isGroupChat,
+//       groupName: chat.groupName,
+//       members: chat.members.map((m) => ({
+//         userId: m.user?._id?.toString() || "unknown",
+//         name: m.user
+//           ? m.user.accountName ||
+//             `${m.user.firstName || ""} ${m.user.lastName || ""}`.trim() ||
+//             "Unknown User"
+//           : "Unknown User",
+//         unreadCount: m.unreadCount || 0,
+//       })),
+//       lastMessage: chat.lastMessage
+//         ? {
+//             id: chat.lastMessage._id?.toString() || "unknown",
+//             content: chat.lastMessage.content || "",
+//             photo: chat.lastMessage.photo || "",
+//             timestamp: chat.lastMessage.createdAt || null,
+//           }
+//         : null,
+//       createdAt: chat.createdAt,
+//     })),
+//   });
+// });
 
 exports.getMessages = catchAsync(async (req, res, next) => {
   const { chatId, filter, page = 1, limit = 20 } = req.query;
@@ -720,107 +749,156 @@ exports.getMessages = catchAsync(async (req, res, next) => {
 
 exports.sendMessage = catchAsync(async (req, res, next) => {
   const { chatId, content, photo } = req.body;
-
-  // Validate inputs
-  if (!chatId || (!content && !photo)) {
-    logger.warn(
-      { chatId, userId: req.user?._id.toString() },
-      "Chat ID and content or photo are required"
-    );
-    return next(new AppError("Chat ID and content or photo are required", 400));
+  if (!chatId || !content) {
+    return next(new Error("Chat ID and content are required"));
   }
-  if (!mongoose.isValidObjectId(chatId)) {
-    logger.warn(
-      { chatId, userId: req.user?._id.toString() },
-      "Invalid Chat ID format"
-    );
-    return next(new AppError("Invalid Chat ID format", 400));
-  }
-
-  // Validate req.user
-  if (!req.user || !req.user._id) {
-    logger.warn({ chatId }, "User not authenticated");
-    return next(new AppError("User not authenticated", 401));
-  }
-
-  logger.info({ chatId, userId: req.user._id.toString() }, "Sending message");
 
   const chat = await Chat.findOne({
     _id: chatId,
-    members: { $elemMatch: { user: req.user._id } },
-  }).populate("members.user", "firstName lastName accountName");
-
+    "members.user": req.user._id,
+  }).lean();
   if (!chat) {
-    logger.warn(
-      { chatId, userId: req.user._id.toString() },
-      "Chat not found or user not a member"
-    );
-    return next(new AppError("Chat not found or you are not a member", 404));
+    return next(new Error("Chat not found or user not a member"));
   }
-
-  logger.debug({ chatId, members: chat.members }, "Chat members retrieved");
 
   const message = await Message.create({
     sender: req.user._id,
     chat: chatId,
-    content: content || "",
-    photo: photo || "",
-    isRead: false,
+    content,
+    photo,
+    timestamp: new Date(), // Explicitly set
   });
-
   await message.populate("sender", "firstName lastName accountName");
 
-  chat.lastMessage = {
-    _id: message._id,
-    content: message.content,
-    photo: message.photo,
-    createdAt: message.createdAt,
-  };
-  chat.members.forEach((member) => {
-    if (member.user?._id?.toString() !== req.user._id.toString()) {
-      member.unreadCount = (member.unreadCount || 0) + 1;
-    }
+  await Chat.findByIdAndUpdate(chatId, {
+    lastMessage: message._id,
   });
-  await chat.save();
 
   const messagePayload = {
     id: message._id.toString(),
-    sender: message.sender?._id?.toString() || "unknown",
-    senderName: message.sender
-      ? message.sender.accountName ||
-        `${message.sender.firstName || ""} ${
-          message.sender.lastName || ""
-        }`.trim() ||
-        "Unknown User"
-      : "Unknown User",
-    content: message.content || "",
-    photo: message.photo || "",
-    timestamp: message.createdAt,
+    sender: message.sender._id.toString(),
+    senderName:
+      message.sender.accountName ||
+      `${message.sender.firstName} ${message.sender.lastName}`,
+    content: message.content,
+    photo: message.photo,
+    timestamp: message.timestamp.toISOString(),
     isRead: message.isRead,
   };
 
-  try {
-    await pusher.trigger("chats", "message-sent", {
-      chatId: chatId.toString(),
-    });
-    await pusher.trigger(`chat-${chatId}`, "new-message", messagePayload);
-    logger.info(
-      { chatId, messageId: message._id.toString() },
-      "Pusher events triggered"
-    );
-  } catch (error) {
-    logger.error(
-      { chatId, error: error.message },
-      "Failed to trigger Pusher events"
-    );
-  }
+  pusher.trigger(`chat-${chatId}`, "new-message", messagePayload);
+  pusher.trigger("chats", "message-sent", { chatId });
 
   res.status(201).json({
     status: "success",
-    message: "Message sent successfully",
     data: messagePayload,
   });
 });
+// exports.sendMessage = catchAsync(async (req, res, next) => {
+//   const { chatId, content, photo } = req.body;
+
+//   // Validate inputs
+//   if (!chatId || (!content && !photo)) {
+//     logger.warn(
+//       { chatId, userId: req.user?._id.toString() },
+//       "Chat ID and content or photo are required"
+//     );
+//     return next(new AppError("Chat ID and content or photo are required", 400));
+//   }
+//   if (!mongoose.isValidObjectId(chatId)) {
+//     logger.warn(
+//       { chatId, userId: req.user?._id.toString() },
+//       "Invalid Chat ID format"
+//     );
+//     return next(new AppError("Invalid Chat ID format", 400));
+//   }
+
+//   // Validate req.user
+//   if (!req.user || !req.user._id) {
+//     logger.warn({ chatId }, "User not authenticated");
+//     return next(new AppError("User not authenticated", 401));
+//   }
+
+//   logger.info({ chatId, userId: req.user._id.toString() }, "Sending message");
+
+//   const chat = await Chat.findOne({
+//     _id: chatId,
+//     members: { $elemMatch: { user: req.user._id } },
+//   })
+//     .populate("members.user", "firstName lastName accountName")
+//     .lean();
+
+//   if (!chat) {
+//     logger.warn(
+//       { chatId, userId: req.user._id.toString() },
+//       "Chat not found or user not a member"
+//     );
+//     return next(new AppError("Chat not found or you are not a member", 404));
+//   }
+
+//   logger.debug({ chatId, members: chat.members }, "Chat members retrieved");
+
+//   const message = await Message.create({
+//     sender: req.user._id,
+//     chat: chatId,
+//     content: content || "",
+//     photo: photo || "",
+//     isRead: false,
+//   });
+
+//   await message.populate("sender", "firstName lastName accountName");
+
+//   chat.lastMessage = {
+//     _id: message._id,
+//     content: message.content,
+//     photo: message.photo,
+//     createdAt: message.createdAt,
+//   };
+//   chat.members.forEach((member) => {
+//     if (member.user?._id?.toString() !== req.user._id.toString()) {
+//       member.unreadCount = (member.unreadCount || 0) + 1;
+//     }
+//   });
+//   await chat.save();
+
+//   const messagePayload = {
+//     id: message._id.toString(),
+//     sender: message.sender?._id?.toString() || "unknown",
+//     senderName: message.sender
+//       ? message.sender.accountName ||
+//         `${message.sender.firstName || ""} ${
+//           message.sender.lastName || ""
+//         }`.trim() ||
+//         "Unknown User"
+//       : "Unknown User",
+//     content: message.content || "",
+//     photo: message.photo || "",
+//     timestamp: message.createdAt,
+//     isRead: message.isRead,
+//   };
+
+//   try {
+//     await pusher.trigger("chats", "message-sent", {
+//       chatId: chatId.toString(),
+//     });
+//     await pusher.trigger(`chat-${chatId}`, "new-message", messagePayload);
+//     logger.info(
+//       { chatId, messageId: message._id.toString() },
+//       "Pusher events triggered"
+//     );
+//   } catch (error) {
+//     logger.error(
+//       { chatId, error: error.message },
+//       "Failed to trigger Pusher events"
+//     );
+//   }
+
+//   res.status(201).json({
+//     status: "success",
+//     message: "Message sent successfully",
+//     data: messagePayload,
+//   });
+// });
 
 exports.markAsRead = catchAsync(async (req, res, next) => {
   const { chatId } = req.params;

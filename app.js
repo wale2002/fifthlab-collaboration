@@ -11,6 +11,7 @@ const cors = require("cors");
 const testRoutes = require("./routes/testRoutes");
 const userRoutes = require("./routes/userRoutes");
 const messageRoutes = require("./routes/messageRoutes");
+const healthCheck = require("./routes/healthRoutes");
 const AppError = require("./utils/appError");
 const globalErrorHandler = require("./controllers/errorControllers");
 const app = express();
@@ -48,7 +49,7 @@ app.get("/", (req, res) => {
   res.send("Hello World!");
 });
 app.get("/favicon.ico", (req, res) => res.status(204).end());
-
+app.get("/api/v1/health", healthCheck);
 app.use("/", testRoutes);
 app.use("/api/v1/users", userRoutes);
 app.use("/api/v1/messages", messageRoutes);
