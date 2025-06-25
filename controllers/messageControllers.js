@@ -561,100 +561,100 @@ exports.createChat = catchAsync(async (req, res, next) => {
     message: "Chat created successfully",
   });
 });
-exports.getChats = catchAsync(async (req, res, next) => {
-  const chats = await Chat.find({
-    "members.user": req.user._id,
-  }).lean();
-
-  res.status(200).json({
-    status: "success",
-    data: chats.map((chat) => ({
-      id: chat._id.toString(),
-      isGroupChat: chat.isGroupChat,
-      groupName: chat.groupName,
-      members: chat.members.map((m) => ({
-        userId: m.user._id.toString(),
-        name: m.user.accountName || `${m.user.firstName} ${m.user.lastName}`,
-        unreadCount: m.unreadCount,
-      })),
-      lastMessage: chat.lastMessage
-        ? {
-            content: chat.lastMessage.content,
-            preview: chat.lastMessage.preview,
-            timestamp: chat.lastMessage.timestamp.toISOString(),
-            isRead: chat.lastMessage.isRead,
-          }
-        : null,
-      createdAt: chat.createdAt.toISOString(),
-      groupAdmin: chat.groupAdmin.map((admin) => admin._id.toString()),
-    })),
-  });
-});
-
 // exports.getChats = catchAsync(async (req, res, next) => {
-//   const { search } = req.query;
-//   logger.info({ userId: req.user._id.toString(), search }, "Fetching chats");
-
-//   let chats = await Chat.find({ "members.user": req.user._id }).populate(
-//     "members.user",
-//     "firstName lastName accountName"
-//   );
-
-//   logger.info({ chatCount: chats.length }, "Chats retrieved from database");
-
-//   chats.forEach((chat, index) => {
-//     logger.debug(
-//       { chatId: chat._id.toString(), members: chat.members },
-//       `Chat ${index} members`
-//     );
-//   });
-
-//   if (search && typeof search === "string") {
-//     chats = chats.filter((chat) =>
-//       chat.isGroupChat
-//         ? chat.groupName?.toLowerCase().includes(search.toLowerCase())
-//         : chat.members.some(
-//             (m) =>
-//               m.user &&
-//               m.user._id.toString() !== req.user._id.toString() &&
-//               `${m.user.firstName || ""} ${m.user.lastName || ""}`
-//                 .toLowerCase()
-//                 .includes(search.toLowerCase())
-//           )
-//     );
-//     logger.info(
-//       { search, filteredCount: chats.length },
-//       "Chats filtered by search"
-//     );
-//   }
+//   const chats = await Chat.find({
+//     "members.user": req.user._id,
+//   }).lean();
 
 //   res.status(200).json({
-//     success: true,
+//     status: "success",
 //     data: chats.map((chat) => ({
 //       id: chat._id.toString(),
 //       isGroupChat: chat.isGroupChat,
 //       groupName: chat.groupName,
 //       members: chat.members.map((m) => ({
-//         userId: m.user?._id?.toString() || "unknown",
-//         name: m.user
-//           ? m.user.accountName ||
-//             `${m.user.firstName || ""} ${m.user.lastName || ""}`.trim() ||
-//             "Unknown User"
-//           : "Unknown User",
-//         unreadCount: m.unreadCount || 0,
+//         userId: m.user._id.toString(),
+//         name: m.user.accountName || `${m.user.firstName} ${m.user.lastName}`,
+//         unreadCount: m.unreadCount,
 //       })),
 //       lastMessage: chat.lastMessage
 //         ? {
-//             id: chat.lastMessage._id?.toString() || "unknown",
-//             content: chat.lastMessage.content || "",
-//             photo: chat.lastMessage.photo || "",
-//             timestamp: chat.lastMessage.createdAt || null,
+//             content: chat.lastMessage.content,
+//             preview: chat.lastMessage.preview,
+//             timestamp: chat.lastMessage.timestamp.toISOString(),
+//             isRead: chat.lastMessage.isRead,
 //           }
 //         : null,
-//       createdAt: chat.createdAt,
+//       createdAt: chat.createdAt.toISOString(),
+//       groupAdmin: chat.groupAdmin.map((admin) => admin._id.toString()),
 //     })),
 //   });
 // });
+
+exports.getChats = catchAsync(async (req, res, next) => {
+  const { search } = req.query;
+  logger.info({ userId: req.user._id.toString(), search }, "Fetching chats");
+
+  let chats = await Chat.find({ "members.user": req.user._id }).populate(
+    "members.user",
+    "firstName lastName accountName"
+  );
+
+  logger.info({ chatCount: chats.length }, "Chats retrieved from database");
+
+  chats.forEach((chat, index) => {
+    logger.debug(
+      { chatId: chat._id.toString(), members: chat.members },
+      `Chat ${index} members`
+    );
+  });
+
+  if (search && typeof search === "string") {
+    chats = chats.filter((chat) =>
+      chat.isGroupChat
+        ? chat.groupName?.toLowerCase().includes(search.toLowerCase())
+        : chat.members.some(
+            (m) =>
+              m.user &&
+              m.user._id.toString() !== req.user._id.toString() &&
+              `${m.user.firstName || ""} ${m.user.lastName || ""}`
+                .toLowerCase()
+                .includes(search.toLowerCase())
+          )
+    );
+    logger.info(
+      { search, filteredCount: chats.length },
+      "Chats filtered by search"
+    );
+  }
+
+  res.status(200).json({
+    success: true,
+    data: chats.map((chat) => ({
+      id: chat._id.toString(),
+      isGroupChat: chat.isGroupChat,
+      groupName: chat.groupName,
+      members: chat.members.map((m) => ({
+        userId: m.user?._id?.toString() || "unknown",
+        name: m.user
+          ? m.user.accountName ||
+            `${m.user.firstName || ""} ${m.user.lastName || ""}`.trim() ||
+            "Unknown User"
+          : "Unknown User",
+        unreadCount: m.unreadCount || 0,
+      })),
+      lastMessage: chat.lastMessage
+        ? {
+            id: chat.lastMessage._id?.toString() || "unknown",
+            content: chat.lastMessage.content || "",
+            photo: chat.lastMessage.photo || "",
+            timestamp: chat.lastMessage.createdAt || null,
+          }
+        : null,
+      createdAt: chat.createdAt,
+    })),
+  });
+});
 
 exports.getMessages = catchAsync(async (req, res, next) => {
   const { chatId, filter, page = 1, limit = 20 } = req.query;
