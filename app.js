@@ -40,6 +40,8 @@ app.use(helmet());
 app.use(express.urlencoded({ extended: true }));
 app.use(express.json());
 app.use(cookieParser());
+// Serve static files
+app.use(express.static(path.join(__dirname, "public")));
 
 if (process.env.NODE_ENV === "development") {
   app.use(morgan("dev"));
