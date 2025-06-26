@@ -20,7 +20,7 @@ const allowedOrigins = [
   process.env.FRONTEND_URL || "https://fifthlab-collaboration.onrender.com",
   "http://localhost:3000",
   "http://localhost:3000/",
-  "https://msg-app-5mwq.vercel.app/",
+  "https://msg-app-5mwq.vercel.app",
 ];
 
 app.use(
