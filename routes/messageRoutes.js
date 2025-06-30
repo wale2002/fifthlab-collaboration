@@ -14,6 +14,7 @@ router.get("/", messageController.getMessages);
 router.post("/", messageController.sendMessage);
 router.patch("/chats/:chatId/markAsRead", messageController.markAsRead);
 router.patch("/chats/:id", messageController.toggleArchive);
+router.delete("/chats/:id", messageController.deleteChat);
 
 // User-related routes
 router.get("/users", messageController.getAllUsers); // Get all active users for chat initiation
