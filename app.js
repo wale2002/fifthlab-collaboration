@@ -12,6 +12,7 @@ const testRoutes = require("./routes/testRoutes");
 const userRoutes = require("./routes/userRoutes");
 const messageRoutes = require("./routes/messageRoutes");
 const healthCheck = require("./routes/healthRoutes");
+
 const AppError = require("./utils/appError");
 const globalErrorHandler = require("./controllers/errorControllers");
 const app = express();

@@ -192,7 +192,6 @@ exports.logout = (req, res) => {
 exports.protect = async (req, res, next) => {
   try {
     let token;
-
     if (req.headers.authorization?.startsWith("Bearer")) {
       token = req.headers.authorization.split(" ")[1];
     } else if (req.cookies?.jwt) {
@@ -204,12 +203,18 @@ exports.protect = async (req, res, next) => {
     }
 
     const decoded = await promisify(jwt.verify)(token, process.env.JWT_SECRET);
-    const currentUser = await User.findById(decoded.id);
+    const currentUser = await User.findById(decoded.id).select("+active");
 
     if (!currentUser) {
       return res
         .status(401)
         .json({ status: "fail", message: "User no longer exists" });
+    }
+
+    if (!currentUser.active) {
+      return res
+        .status(401)
+        .json({ status: "fail", message: "User account is deactivated" });
     }
 
     if (currentUser.changedPasswordAfter(decoded.iat)) {
@@ -229,6 +234,46 @@ exports.protect = async (req, res, next) => {
     });
   }
 };
+// exports.protect = async (req, res, next) => {
+//   try {
+//     let token;
+
+//     if (req.headers.authorization?.startsWith("Bearer")) {
+//       token = req.headers.authorization.split(" ")[1];
+//     } else if (req.cookies?.jwt) {
+//       token = req.cookies.jwt;
+//     }
+
+//     if (!token) {
+//       return res.status(401).json({ status: "fail", message: "Not logged in" });
+//     }
+
+//     const decoded = await promisify(jwt.verify)(token, process.env.JWT_SECRET);
+//     const currentUser = await User.findById(decoded.id);
+
+//     if (!currentUser) {
+//       return res
+//         .status(401)
+//         .json({ status: "fail", message: "User no longer exists" });
+//     }
+
+//     if (currentUser.changedPasswordAfter(decoded.iat)) {
+//       return res
+//         .status(401)
+//         .json({ status: "fail", message: "Password recently changed" });
+//     }
+
+//     req.user = currentUser;
+//     res.locals.user = currentUser;
+//     next();
+//   } catch (err) {
+//     return res.status(401).json({
+//       status: "fail",
+//       message: "Invalid or expired token",
+//       error: err.message,
+//     });
+//   }
+// };
 
 exports.isLoggedIn = async (req, res, next) => {
   try {

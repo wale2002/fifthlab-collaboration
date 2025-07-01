@@ -175,3 +175,21 @@ exports.createUser = catchAsync(async (req, res, next) => {
     data: { user: newUser },
   });
 });
+
+const ErrorResponse = require("../utils/errorResponse");
+
+exports.reactivateMe = catchAsync(async (req, res, next) => {
+  const user = await User.findById(req.user._id);
+  if (!user) {
+    return next(new ErrorResponse("User not found", 404));
+  }
+  if (user.active) {
+    return next(new ErrorResponse("User account is already active", 400));
+  }
+  await User.findByIdAndUpdate(req.user._id, { active: true });
+  res.status(200).json({
+    status: "success",
+    data: { userId: req.user._id },
+    message: "User account reactivated",
+  });
+});

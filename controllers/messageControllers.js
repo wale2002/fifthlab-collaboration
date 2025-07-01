@@ -6,7 +6,7 @@ const Chat = require("../models/chatModel");
 const User = require("../models/userModel");
 const catchAsync = require("../utils/catchAsync");
 const AppError = require("../utils/appError");
-
+const ErrorResponse = require("../utils/errorResponse");
 // Initialize logger
 const logger = pino({
   level: process.env.LOG_LEVEL || "info",
@@ -249,47 +249,85 @@ exports.getChats = catchAsync(async (req, res, next) => {
   });
 });
 
-exports.deleteChat = catchAsync(async (req, res) => {
-  try {
-    const { chatId } = req.params; // Get chatId from request params
-    const userId = req.user.id; // Assuming user ID from auth middleware
+// exports.deleteChat = catchAsync(async (req, res, next) => {
+//   console.log("deleteChat called:", {
+//     chatId: req.params.id,
+//     userId: req.user.id,
+//     userActive: req.user.active,
+//   });
 
-    // Step 1: Find the chat
-    const chat = await Chat.findById(chatId);
-    if (!chat) {
-      return res.status(404).json({ success: false, error: "Chat not found" });
-    }
+//   const chat = await Chat.findById(req.params.id);
+//   if (!chat) {
+//     return next(new ErrorResponse("Chat not found", 404));
+//   }
 
-    // Step 2: Check if the user has permission to delete
-    // Allow deletion if the user is a member or a group admin (for group chats)
-    const isMember = chat.members.some(
-      (member) => member.user.toString() === userId
-    );
-    const isGroupAdmin =
-      chat.isGroupChat &&
-      chat.groupAdmin.some((admin) => admin.toString() === userId);
-    if (!isMember && !isGroupAdmin) {
-      return res
-        .status(403)
-        .json({ success: false, error: "Unauthorized to delete this chat" });
-    }
+//   const userId = req.user.id.toString();
+//   const isMember = chat.members.some(
+//     (member) => member.user.toString() === userId
+//   );
+//   if (!isMember) {
+//     return next(new ErrorResponse("User is not a member of this chat", 403));
+//   }
 
-    // Step 3: Delete all messages associated with the chat
-    await Message.deleteMany({ chat: chatId });
+//   await Message.deleteMany({ chat: chat._id });
+//   await Chat.deleteOne({ _id: chat._id });
 
-    // Step 4: Delete the chat
-    await Chat.findByIdAndDelete(chatId);
+//   res.status(200).json({
+//     success: true,
+//     data: { chatId: req.params.id },
+//     message: "Chat deleted successfully",
+//   });
+// });
 
-    // Step 5: Return success response
-    return res.status(200).json({
-      success: true,
-      data: { chatId },
-      message: "Chat deleted successfully",
-    });
-  } catch (error) {
-    console.error("Error deleting chat:", error);
-    return res.status(500).json({ success: false, error: "Server error" });
+exports.deleteChat = catchAsync(async (req, res, next) => {
+  const chatId = req.params.id;
+  const userId = req.user.id;
+
+  console.log("🗑️ deleteChat called:", {
+    chatId,
+    userId,
+    userActive: req.user.active,
+  });
+
+  if (!mongoose.Types.ObjectId.isValid(chatId)) {
+    return res.status(400).json({ status: "fail", message: "Invalid chat ID" });
   }
+
+  const chat = await Chat.findById(chatId);
+
+  if (!chat) {
+    return res.status(404).json({ status: "fail", message: "Chat not found" });
+  }
+
+  // Log members for debugging
+  console.log(
+    "🧾 Chat members:",
+    chat.members.map((m) => m.user.toString())
+  );
+
+  const isMember = chat.members.some(
+    (member) =>
+      (member.user._id || member.user).toString() === userId.toString()
+  );
+
+  if (!isMember) {
+    return res.status(403).json({
+      status: "fail",
+      message: "User is not a member of this chat",
+    });
+  }
+
+  await Message.deleteMany({ chat: chat._id });
+  console.log("🧹 Messages deleted for chat:", chat._id);
+
+  await Chat.deleteOne({ _id: chat._id });
+  console.log("✅ Chat deleted:", chat._id);
+
+  res.status(200).json({
+    success: true,
+    data: { chatId },
+    message: "Chat deleted successfully",
+  });
 });
 
 exports.getMessages = catchAsync(async (req, res, next) => {
