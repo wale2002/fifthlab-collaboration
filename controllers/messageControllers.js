@@ -748,16 +748,33 @@ exports.deleteMessage = catchAsync(async (req, res, next) => {
     });
   }
 
-  await Message.findByIdAndDelete(messageId);
+  const deletedMessage = await Message.findByIdAndDelete(messageId);
 
-  console.log("✅ Message deleted");
+  if (!deletedMessage) {
+    console.log("❌ Message not deleted");
+    return res.status(404).json({
+      status: "fail",
+      message: "Message could not be deleted",
+    });
+  }
+
+  console.log("✅ Message deleted", deletedMessage);
 
   // Emit the Pusher event after deletion
-  pusher.trigger(`chat-${message.chatId}`, "message-deleted", { messageId });
+  try {
+    const pusher = new Pusher(process.env.PUSHER_KEY, {
+      cluster: process.env.PUSHER_CLUSTER,
+      encrypted: true,
+    });
+    pusher.trigger(`chat-${message.chatId}`, "message-deleted", { messageId });
+    console.log("Pusher event triggered successfully");
+  } catch (error) {
+    console.error("Pusher error:", error);
+  }
 
-  res.status(204).json({
+  res.status(200).json({
     status: "success",
     message: "Message deleted successfully",
-    data: null,
+    data: { messageId },
   });
 });
