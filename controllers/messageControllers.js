@@ -752,6 +752,9 @@ exports.deleteMessage = catchAsync(async (req, res, next) => {
 
   console.log("✅ Message deleted");
 
+  // Emit the Pusher event after deletion
+  pusher.trigger(`chat-${message.chatId}`, "message-deleted", { messageId });
+
   res.status(204).json({
     status: "success",
     message: "Message deleted successfully",
