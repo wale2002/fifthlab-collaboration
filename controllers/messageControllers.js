@@ -707,3 +707,54 @@ exports.toggleArchive = catchAsync(async (req, res, next) => {
     },
   });
 });
+
+// DELETE /api/v1/messages/:id
+
+exports.deleteMessage = catchAsync(async (req, res, next) => {
+  const messageId = req.params.id;
+  const userId = req.user.id;
+
+  console.log("🧾 deleteMessage called", {
+    messageId,
+    userId,
+  });
+
+  const message = await Message.findById(messageId);
+
+  if (!message) {
+    console.log("❌ Message not found");
+    return res.status(404).json({
+      status: "fail",
+      message: "Message not found",
+    });
+  }
+
+  console.log("📨 Message found", {
+    sender: message.sender.toString(),
+    loggedInUser: userId,
+  });
+
+  // Ensure only the sender can delete the message
+  const senderId =
+    typeof message.sender === "object"
+      ? message.sender._id?.toString()
+      : message.sender.toString();
+
+  if (senderId !== userId.toString()) {
+    console.log("⛔ Unauthorized delete attempt");
+    return res.status(403).json({
+      status: "fail",
+      message: "You are not allowed to delete this message",
+    });
+  }
+
+  await Message.findByIdAndDelete(messageId);
+
+  console.log("✅ Message deleted");
+
+  res.status(204).json({
+    status: "success",
+    message: "Message deleted successfully",
+    data: null,
+  });
+});
