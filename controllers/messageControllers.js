@@ -367,8 +367,15 @@ exports.getMessages = catchAsync(async (req, res, next) => {
     return next(new AppError("Chat not found or you are not a member", 404));
   }
 
-  const query = { chat: chatId };
-  if (filter === "unread") query.isRead = false;
+  const query = {
+  chat: chatId,
+  isDeleted: { $ne: true } // 💥 Exclude soft-deleted messages
+};
+
+if (filter === "unread") {
+  query.isRead = false;
+}
+
 
   const pageNum = isNaN(page) || page < 1 ? 1 : Number(page);
   const limitNum = isNaN(limit) || limit < 1 ? 20 : Number(limit);
