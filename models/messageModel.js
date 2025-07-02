@@ -96,6 +96,10 @@ const messageSchema = new mongoose.Schema({
     type: String,
     trim: true,
   },
+  isDeleted: {
+    type: Boolean,
+    default: false,
+  },
 });
 
 messageSchema.pre("save", function (next) {

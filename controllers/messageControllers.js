@@ -761,16 +761,24 @@ exports.deleteMessage = catchAsync(async (req, res, next) => {
   console.log("✅ Message deleted", deletedMessage);
 
   // Emit the Pusher event after deletion
-  try {
-    const pusher = new Pusher(process.env.PUSHER_KEY, {
-      cluster: process.env.PUSHER_CLUSTER,
-      encrypted: true,
+  // try {
+  //   const pusher = new Pusher(process.env.PUSHER_KEY, {
+  //     cluster: process.env.PUSHER_CLUSTER,
+  //     encrypted: true,
+  //   });
+  //   pusher.trigger(`chat-${message.chatId}`, "message-deleted", { messageId });
+  //   console.log("Pusher event triggered successfully");
+  // } catch (error) {
+  //   console.error("Pusher error:", error);
+  // }
+  const chatId = message.chat?._id?.toString?.() || message.chat?.toString?.();
+  if (!chatId) {
+    return res.status(400).json({
+      status: "fail",
+      message: "Message is missing chat reference",
     });
-    pusher.trigger(`chat-${message.chatId}`, "message-deleted", { messageId });
-    console.log("Pusher event triggered successfully");
-  } catch (error) {
-    console.error("Pusher error:", error);
   }
+  await pusher.trigger(`chat-${chatId}`, "message-deleted", { messageId });
 
   res.status(200).json({
     status: "success",
