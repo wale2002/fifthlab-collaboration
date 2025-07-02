@@ -748,19 +748,18 @@ exports.deleteMessage = catchAsync(async (req, res, next) => {
     });
   }
 
-  // const deletedMessage = await Message.findByIdAndDelete(messageId);
+  const deletedMessage = await Message.findByIdAndDelete(messageId);
 
-  // if (!deletedMessage) {
-  //   console.log("❌ Message not deleted");
-  //   return res.status(404).json({
-  //     status: "fail",
-  //     message: "Message could not be deleted",
-  //   });
-  // }
+  if (!deletedMessage) {
+    console.log("❌ Message not deleted");
+    return res.status(404).json({
+      status: "fail",
+      message: "Message could not be deleted",
+    });
+  }
 
-  // console.log("✅ Message deleted", deletedMessage);
-  message.isDeleted = true;
-  await message.save();
+  console.log("✅ Message deleted", deletedMessage);
+  
 
   // Emit the Pusher event after deletion
   // try {
